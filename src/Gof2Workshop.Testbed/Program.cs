@@ -272,6 +272,12 @@ internal static class Program
             "output",
             Path.Combine("work", ObjExporter.SanitizeFileName(Path.GetFileNameWithoutExtension(path)) + "-preview.png"));
         int size = args.GetIntOption("size") ?? 1024;
+        float? animationTime = args.GetFloatOption("time");
+        if (animationTime is < 0)
+        {
+            throw new ArgumentException("--time must be zero or positive.");
+        }
+
         AemFile file = new AemParser().Parse(
             path,
             new AemParserOptions(ResolveProfile(args)),
@@ -280,7 +286,10 @@ internal static class Program
         ScenePreviewResult result = new ScenePreviewRenderer().RenderToPng(
             scene,
             output,
-            new ScenePreviewOptions(Width: size, Height: size),
+            new ScenePreviewOptions(
+                Width: size,
+                Height: size,
+                AnimationTimeSeconds: animationTime),
             cancellationToken);
         logger.Info(
             "aem.preview_rendered",
@@ -377,7 +386,7 @@ internal static class Program
               aei-export <file> [--output work/name-aei] [--profile pc-1x]
               aem-info <file> [--profile pc-1x] [--research]
               aem-export <file> [--format gltf|obj|both] [--output work/name-aem]
-              aem-preview <file> [--output work/name-preview.png] [--size 1024]
+              aem-preview <file> [--output work/name-preview.png] [--size 1024] [--time seconds]
               view <file> [--output path]
               validate-corpus <folder> [--decode] [--limit N] [--json work/validation.json]
               generate-synthetic [--output samples/SyntheticDemo]

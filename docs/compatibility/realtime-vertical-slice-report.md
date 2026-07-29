@@ -11,6 +11,9 @@ Validated 2026-07-29 on Windows with .NET 10.0.302 and Avalonia 12.1.0.
 - Modes: lit/unlit textured, solid diagnostic, provisional auxiliary channel, winding; overlays:
   wireframe, normals, pivots, bounds, selection, isolation, and back-face culling.
 - Click selection uses bounds-first CPU ray/triangle tests and synchronizes the Inspector/list.
+- Renderer-independent viewport input uses a dedicated captured interaction surface above the
+  OpenGL/software layers. A physical 144x36-pixel Windows drag changed the real ship camera from
+  yaw -35°/pitch 25° to yaw 48°/pitch 46°, matching the configured sensitivity exactly.
 - Context/device validated: OpenGL ES 3.0, ANGLE/Direct3D 11, Intel UHD Graphics driver
   31.0.101.2137, maximum texture dimension 16,384.
 - `ship_017_terran_lod_1.aem`: 5,574 vertices, 1,858 triangles, four diagnostic draw calls;
@@ -69,14 +72,43 @@ Ignored visual evidence is under `work/screenshots/`, including:
 - `changes-staged-aei.png`: the validated replacement in the Changes activity.
 - `mod-build-output.png`: the deterministic one-asset build, report, manifest, and output folder.
 
+## 2026-07-30 workbench and AEM follow-up
+
+- The document strip and AEM command bar now use a Workshop-owned horizontal overflow control.
+  Native scroll thumbs are hidden; two fixed 20 × 20 theme-aware edge buttons and horizontal
+  wheel/trackpad scrolling remain available without covering the controls.
+- A document-tab context menu selects the clicked tab and delegates Close, Close Others, Close
+  Tabs to the Right, and Close All to the centralized document commands. Multi-close operations
+  dispose the removed documents and publish one document-manager change notification.
+- Cross-checking AEMesh's independent importer behavior against the reconstructed engine transform
+  and quaternion paths confirmed that scalar animation translation is `(X, Z, -Y)`, rotations use
+  the engine's signed Euler-to-quaternion construction, and rotation keys use component-wise
+  normalized linear interpolation. The former generic .NET yaw/pitch/roll and slerp path was
+  removed.
+- A bounded corpus audit parsed all 752 AEM files: 150 files / 660 submeshes contain transform
+  animation, and all 660 animated submeshes use the scalar storage covered by the correction.
+  Multi-submesh files are flat sibling mesh objects with independent pivots and animation records;
+  the examined format and engine paths contain no bone weights, skeletal rig table, or submesh
+  parent index.
+- Release validation after the follow-up: 62 tests passed, the isolated Release solution build
+  completed with zero warnings/errors, and full corpus validation parsed and scene-converted all
+  752 AEM plus parsed/decoded all 1,228 AEI without an uncontrolled crash.
+- Ignored screenshots `compact-scroll-hover.png` and `tab-context-menu.png` record the live
+  Avalonia hover footprint and context menu. Time-sampled software renders for animated corpus
+  models are under `work/animation-validation/`.
+
 ## Remaining limitations
 
 - Material relationships remain heuristic unless manually confirmed; AEM contains no invented
   material fields.
 - Android ETC/ATC decoding has synthetic coverage but needs a real Android corpus. Mobile encoding
   remains unavailable.
-- Cube-map face order, source handedness/up-axis, pivot hierarchy, and auxiliary float4 semantics
-  remain explicitly unresolved.
+- Cube-map face order, source handedness/up-axis, container-level transform composition, and
+  auxiliary float4 semantics remain explicitly unresolved. No hierarchy is inferred among the
+  sibling submeshes stored in one AEM.
+- Packed-vector animation axis behavior is preserved as stored because the local animated corpus
+  uses scalar tracks exclusively. UV and special/unresolved animation channels remain preserved
+  but are not played or exported.
 - Recovery replay is implemented and hash-guarded; a dedicated startup choice dialog is not yet
   wired.
 - The Changes activity currently presents validated staged replacements and conflicts; richer

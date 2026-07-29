@@ -110,6 +110,9 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         CloseOtherDocumentsCommand = new RelayCommand(
             CloseOtherDocuments,
             parameter => parameter is IDocument || SelectedDocument is not null);
+        CloseDocumentsToRightCommand = new RelayCommand(
+            CloseDocumentsToRight,
+            CanCloseDocumentsToRight);
         CloseAllDocumentsCommand = new RelayCommand(
             CloseAllDocuments,
             () => Documents.Count > 0);
@@ -499,6 +502,8 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     public System.Windows.Input.ICommand CloseDocumentCommand { get; }
 
     public System.Windows.Input.ICommand CloseOtherDocumentsCommand { get; }
+
+    public System.Windows.Input.ICommand CloseDocumentsToRightCommand { get; }
 
     public System.Windows.Input.ICommand CloseAllDocumentsCommand { get; }
 
@@ -983,10 +988,29 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     private void CloseOtherDocuments(object? parameter)
     {
         IDocument? keep = parameter as IDocument ?? SelectedDocument;
-        foreach (IDocument document in Documents.Where(value => !ReferenceEquals(value, keep)).ToArray())
+        if (keep is not null)
         {
-            _ = documentManager.Close(document);
+            _ = documentManager.CloseOthers(keep);
         }
+    }
+
+    private bool CanCloseDocumentsToRight(object? parameter)
+    {
+        IDocument? document = parameter as IDocument ?? SelectedDocument;
+        int index = document is null ? -1 : Documents.IndexOf(document);
+        return index >= 0 && index < Documents.Count - 1;
+    }
+
+    private void CloseDocumentsToRight(object? parameter)
+    {
+        IDocument? keep = parameter as IDocument ?? SelectedDocument;
+        int index = keep is null ? -1 : Documents.IndexOf(keep);
+        if (index < 0)
+        {
+            return;
+        }
+
+        _ = documentManager.CloseToRight(keep!);
     }
 
     private void CloseAllDocuments()
@@ -1732,6 +1756,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
             OpenAssetCommand,
             CloseDocumentCommand,
             CloseOtherDocumentsCommand,
+            CloseDocumentsToRightCommand,
             CloseAllDocumentsCommand,
             UndoActiveDocumentCommand,
             RedoActiveDocumentCommand,

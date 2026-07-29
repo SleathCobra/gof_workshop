@@ -127,9 +127,7 @@
                   Command="{Binding PreviousDocumentCommand}" Content="‹" />
           <Button Grid.Column="1" Padding="7,2" ToolTip.Tip="Next active document (Alt+Right)"
                   Command="{Binding NextDocumentCommand}" Content="›" />
-          <ScrollViewer Grid.Column="2" Height="34"
-                        HorizontalScrollBarVisibility="Auto"
-                        VerticalScrollBarVisibility="Disabled">
+          <views:CompactHorizontalScroller Grid.Column="2" Height="34" ScrollStep="180">
             <TabStrip x:Name="DocumentTabs" Height="34" ItemsSource="{Binding Documents}"
                       SelectedItem="{Binding SelectedDocument, Mode=TwoWay}">
               <TabStrip.ItemsPanel>
@@ -139,7 +137,8 @@
               </TabStrip.ItemsPanel>
               <TabStrip.ItemTemplate>
                 <DataTemplate>
-                  <Grid ColumnDefinitions="*,Auto" Width="180">
+                  <Grid ColumnDefinitions="*,Auto" Width="180"
+                        PointerPressed="OnDocumentTabPointerPressed">
                     <TextBlock Margin="6,0" VerticalAlignment="Center" Text="{Binding Title}"
                                TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding SourcePath}" />
                     <Button Grid.Column="1" Padding="5,1" Background="Transparent" BorderThickness="0"
@@ -148,7 +147,7 @@
                 </DataTemplate>
               </TabStrip.ItemTemplate>
             </TabStrip>
-          </ScrollViewer>
+          </views:CompactHorizontalScroller>
           <ComboBox Grid.Column="3" Width="190" Margin="4,0,0,0"
                     ToolTip.Tip="All open documents"
                     ItemsSource="{Binding Documents}"

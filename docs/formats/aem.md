@@ -54,13 +54,16 @@ Translation, rotation, and scale each begin with a u16 storage selector:
 
 Next is a signed v4 special marker. Marker `2` is followed by a scalar curve. V5 then stores a UV-animation marker; a nonzero value introduces seven scalar curves for UV offset X/Y, scale X/Y, two unresolved channels, and rotation Z. A signed 16-bit padding value ends the record.
 
-Curves and raw animation bytes are preserved. Transform key times are interpreted as milliseconds and converted to seconds. Translation and scale interpolate linearly; Euler-radian rotations are converted to quaternions and interpolate with slerp. The OpenGL and software viewers play these transform tracks, and glTF writes translation/rotation/scale samplers and channels. UV animation and special/unresolved channels remain preserved but are not played or exported.
+Curves and raw animation bytes are preserved. Transform key times are milliseconds and are converted to seconds. The local PC corpus has 150 animated files / 660 animated submeshes; all of those animated records use the three-scalar translation and rotation representation. For this representation the engine consumes the stored translation channels as `(X, Z, -Y)`. Packed vector translation curves remain unmodified because no animated corpus sample independently confirms a remapping for that storage form.
+
+Euler-radian rotation keys use the Abyss Engine's signed Euler-to-quaternion convention rather than the similarly named .NET yaw/pitch/roll helper. Between keys, translation and scale interpolate linearly and rotations use normalized linear quaternion interpolation, matching the reconstructed engine behavior. This corrects the prior axis/sign and long-arc errors that displaced or mis-oriented animated submeshes. The OpenGL and software viewers play these transform tracks, and glTF writes translation/rotation/scale samplers and channels. UV animation and special/unresolved channels remain preserved but are not played or exported.
 
 ## Scene normalization
 
 - Positions, normals, index order, and pivots are retained without lossy source-model mutation.
 - UVs in the scene/export layer become `(u, 1-v)` for PNG/glTF-oriented display; raw UVs remain in the AEM model.
-- The current scene convention retains source XYZ and declares glTF Y-up. Geometry is localized around a submesh pivot in glTF and that pivot becomes the node translation, permitting non-destructive transform animation about the expected origin. Broader handedness/up-axis conversion remains deferred.
+- The current scene convention retains source XYZ geometry and declares glTF Y-up. Engine-observed scalar animation-axis conversion is applied only to the scalar translation tracks described above. Geometry is localized around a submesh pivot in glTF and that pivot becomes the node translation, permitting non-destructive transform animation about the expected origin.
+- Multi-submesh AEMs are a flat collection of sibling meshes. Each submesh owns its pivot and transform record; the reconstructed engine stores them as child meshes under a container transform. No bone weights, skeletal rig table, or parent index is present in the AEM records examined. The viewer therefore does not invent a rig or chain one submesh transform through another.
 - Face winding is not silently modified. Each scene conversion reports geometric-normal versus stored-normal alignment.
 - AEM does not currently expose a confirmed embedded texture-name field. Material bindings therefore
   live in the parser-independent scene/workspace layer and record whether they came from an exact

@@ -109,14 +109,9 @@ public sealed class AemSceneConverter
                 time =>
                 {
                     float sourceTime = time * 1000f;
-                    Vector3 translation = EvaluateVector(
+                    Vector3 translation = EvaluateTranslation(
                         transformCurves,
-                        sourceTime,
-                        AemAnimationChannel.TranslationXyz,
-                        AemAnimationChannel.TranslationX,
-                        AemAnimationChannel.TranslationY,
-                        AemAnimationChannel.TranslationZ,
-                        Vector3.Zero);
+                        sourceTime);
                     Vector3 euler = EvaluateVector(
                         transformCurves,
                         sourceTime,
@@ -133,8 +128,8 @@ public sealed class AemSceneConverter
                         AemAnimationChannel.ScaleY,
                         AemAnimationChannel.ScaleZ,
                         Vector3.One);
-                    Quaternion rotation = Quaternion.Normalize(
-                        Quaternion.CreateFromYawPitchRoll(euler.Y, euler.X, euler.Z));
+                    Quaternion rotation =
+                        AemTransformSemantics.CreateEngineRotation(euler);
                     return new SceneTransformKey(time, translation, rotation, scale);
                 })
                 .ToArray();
@@ -173,8 +168,9 @@ public sealed class AemSceneConverter
         diagnostics.Add(new FormatDiagnostic(
             DiagnosticSeverity.Info,
             "AEM_ANIMATION_TIME_UNIT",
-            "Transform-key times are interpreted as milliseconds and converted to seconds; " +
-            "transform components use linear interpolation and Euler XYZ source rotations.",
+            "Transform-key times are interpreted as milliseconds and converted to seconds. " +
+            "Scalar translation channels use the engine-observed (X, Z, -Y) mapping; " +
+            "Euler rotations use the engine quaternion convention.",
             0,
             "animation"));
         return
@@ -186,6 +182,36 @@ public sealed class AemSceneConverter
                 "milliseconds",
                 limitations),
         ];
+    }
+
+    private static Vector3 EvaluateTranslation(
+        IReadOnlyList<AemAnimationCurve> curves,
+        float time)
+    {
+        AemAnimationCurve? vector = curves.FirstOrDefault(
+            curve => curve.Channel == AemAnimationChannel.TranslationXyz);
+        if (vector is not null)
+        {
+            return EvaluateCurve(vector, time, Vector3.Zero);
+        }
+
+        Vector3 stored = new(
+            EvaluateScalar(
+                curves,
+                AemAnimationChannel.TranslationX,
+                time,
+                0),
+            EvaluateScalar(
+                curves,
+                AemAnimationChannel.TranslationY,
+                time,
+                0),
+            EvaluateScalar(
+                curves,
+                AemAnimationChannel.TranslationZ,
+                time,
+                0));
+        return AemTransformSemantics.ConvertScalarTranslation(stored);
     }
 
     private static Vector3 EvaluateVector(

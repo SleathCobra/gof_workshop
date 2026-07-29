@@ -330,6 +330,52 @@ public sealed class DocumentManager : IDisposable
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    public int CloseOthers(IDocument keep)
+    {
+        ArgumentNullException.ThrowIfNull(keep);
+        IDocument[] closing;
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            if (!documents.Contains(keep))
+            {
+                return 0;
+            }
+
+            closing = documents.Where(document => !ReferenceEquals(document, keep)).ToArray();
+            documents.RemoveAll(document => !ReferenceEquals(document, keep));
+            activeDocument = keep;
+        }
+
+        DisposeClosedDocuments(closing);
+        return closing.Length;
+    }
+
+    public int CloseToRight(IDocument keep)
+    {
+        ArgumentNullException.ThrowIfNull(keep);
+        IDocument[] closing;
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            int index = documents.IndexOf(keep);
+            if (index < 0 || index == documents.Count - 1)
+            {
+                return 0;
+            }
+
+            closing = documents.Skip(index + 1).ToArray();
+            documents.RemoveRange(index + 1, closing.Length);
+            if (closing.Contains(activeDocument))
+            {
+                activeDocument = keep;
+            }
+        }
+
+        DisposeClosedDocuments(closing);
+        return closing.Length;
+    }
+
     public IReadOnlyList<WorkspaceDocumentState> CaptureState(string? gameRoot)
     {
         IDocument[] snapshot;
@@ -404,6 +450,19 @@ public sealed class DocumentManager : IDisposable
     }
 
     public static string NormalizeDocumentId(string path) => Path.GetFullPath(path);
+
+    private void DisposeClosedDocuments(IDocument[] closing)
+    {
+        foreach (IDocument document in closing)
+        {
+            document.Dispose();
+        }
+
+        if (closing.Length > 0)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     private static string ToPersistedPath(string path, string? gameRoot)
     {

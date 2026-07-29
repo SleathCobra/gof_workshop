@@ -360,6 +360,34 @@ public sealed class WorkbenchServiceTests
     }
 
     [TestMethod]
+    public void DocumentManagerClosesOtherAndRightHandDocumentsAtomically()
+    {
+        DocumentEditorRegistry registry = new();
+        using DocumentManager manager = new(registry);
+        FakeDocument first = new(
+            CreateIndexed("meshes/first.aem", AssetKind.Aem, "v4", AssetSupport.Supported));
+        FakeDocument second = new(
+            CreateIndexed("meshes/second.aem", AssetKind.Aem, "v4", AssetSupport.Supported));
+        FakeDocument third = new(
+            CreateIndexed("meshes/third.aem", AssetKind.Aem, "v4", AssetSupport.Supported));
+        manager.Add(first);
+        manager.Add(second);
+        manager.Add(third);
+
+        Assert.AreEqual(1, manager.CloseToRight(second));
+        CollectionAssert.AreEqual(
+            new IDocument[] { first, second },
+            manager.Documents.ToArray());
+        Assert.AreSame(second, manager.ActiveDocument);
+
+        Assert.AreEqual(1, manager.CloseOthers(second));
+        CollectionAssert.AreEqual(
+            new IDocument[] { second },
+            manager.Documents.ToArray());
+        Assert.AreSame(second, manager.ActiveDocument);
+    }
+
+    [TestMethod]
     public async Task RecentDocumentRestorationSkipsMissingAssets()
     {
         string gameRoot = Path.Combine(temporaryRoot, "game");

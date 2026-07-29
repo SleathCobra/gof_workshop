@@ -250,6 +250,68 @@ public sealed partial class MainWindow : Window, IDisposable
         eventArgs.Handled = true;
     }
 
+    private void OnDocumentTabPointerPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (sender is not Control { DataContext: IDocument document } control ||
+            eventArgs.GetCurrentPoint(control).Properties.PointerUpdateKind !=
+            PointerUpdateKind.RightButtonPressed)
+        {
+            return;
+        }
+
+        viewModel.SelectedDocument = document;
+        ContextMenu menu = new()
+        {
+            ItemsSource = new object[]
+            {
+                CreateDocumentMenuItem(
+                    "Close",
+                    viewModel.CloseDocumentCommand,
+                    document,
+                    new KeyGesture(Key.W, KeyModifiers.Control)),
+                CreateDocumentMenuItem(
+                    "Close Others",
+                    viewModel.CloseOtherDocumentsCommand,
+                    document),
+                CreateDocumentMenuItem(
+                    "Close Tabs to the Right",
+                    viewModel.CloseDocumentsToRightCommand,
+                    document),
+                new Separator(),
+                CreateDocumentMenuItem(
+                    "Close All",
+                    viewModel.CloseAllDocumentsCommand,
+                    null,
+                    new KeyGesture(
+                        Key.W,
+                        KeyModifiers.Control | KeyModifiers.Shift)),
+            },
+        };
+        control.ContextMenu = menu;
+        menu.Open(control);
+        eventArgs.Handled = true;
+    }
+
+    private static MenuItem CreateDocumentMenuItem(
+        string header,
+        System.Windows.Input.ICommand command,
+        object? parameter,
+        KeyGesture? gesture = null)
+    {
+        MenuItem item = new()
+        {
+            Header = header,
+            Command = command,
+            CommandParameter = parameter,
+        };
+        if (gesture is not null)
+        {
+            item.InputGesture = gesture;
+        }
+
+        return item;
+    }
+
     private void OnExitClick(object? sender, RoutedEventArgs eventArgs)
     {
         _ = sender;

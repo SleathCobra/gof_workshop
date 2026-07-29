@@ -86,6 +86,24 @@ internal sealed class CliArguments
             : throw new ArgumentException($"Option --{name} requires an integer, got '{value}'.");
     }
 
+    public float? GetFloatOption(string name)
+    {
+        string? value = GetOption(name);
+        if (value is null)
+        {
+            return null;
+        }
+
+        return float.TryParse(
+            value,
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out float result)
+            ? result
+            : throw new ArgumentException(
+                $"Option --{name} requires a number, got '{value}'.");
+    }
+
     public string RequirePositional(int index, string description)
     {
         return index < Positionals.Count

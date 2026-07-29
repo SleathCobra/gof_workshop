@@ -1416,6 +1416,9 @@ public sealed class AemDocumentViewModel :
                             Scene.Animations.Count == 0
                                 ? "No transform clip"
                                 : "glTF transform animation enabled"),
+                        new InspectorProperty(
+                            "Hierarchy",
+                            "Independent per-submesh transforms; no skeletal rig table"),
                     ]),
                 new(
                     "Material",

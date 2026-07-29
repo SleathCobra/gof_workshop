@@ -387,6 +387,33 @@ public sealed class AemParserTests
         }
     }
 
+    [TestMethod]
+    public void ScalarAnimationUsesEngineAxisRotationAndInterpolationSemantics()
+    {
+        using MemoryStream input = new(CreateV4ScalarTransformFixture());
+        SceneDocument scene = new AemSceneConverter().Convert(
+            new AemParser().Parse(input, "scalar-transform.aem"));
+
+        SceneTransform first = SceneAnimationEvaluator.Evaluate(
+            scene.Animations[0],
+            primitiveIndex: 0,
+            timeSeconds: 0,
+            loop: false);
+        Assert.AreEqual(new Vector3(1, 3, -2), first.Translation);
+        Assert.AreEqual(0f, first.Rotation.X, 0.0001f);
+        Assert.AreEqual(-MathF.Sqrt(0.5f), first.Rotation.Y, 0.0001f);
+        Assert.AreEqual(0f, first.Rotation.Z, 0.0001f);
+        Assert.AreEqual(MathF.Sqrt(0.5f), first.Rotation.W, 0.0001f);
+
+        Quaternion longArc = AemTransformSemantics.InterpolateEngineRotation(
+            Quaternion.Identity,
+            AemTransformSemantics.CreateEngineRotation(
+                new Vector3(0, 0, MathF.PI * 1.5f)),
+            0.5f);
+        Assert.AreEqual(0.9238795f, longArc.Z, 0.0001f);
+        Assert.AreEqual(0.3826834f, longArc.W, 0.0001f);
+    }
+
     private static byte[] CreateV4Fixture(bool includeAuxiliary)
     {
         using MemoryStream stream = new();
@@ -545,6 +572,35 @@ public sealed class AemParserTests
         writer.Write((ushort)0);
         writer.Write((ushort)1);
         writer.Write((ushort)0);
+        writer.Write((short)-1);
+        writer.Write((short)0);
+        return stream.ToArray();
+    }
+
+    private static byte[] CreateV4ScalarTransformFixture()
+    {
+        using MemoryStream stream = new();
+        using BinaryWriter writer = new(stream);
+        writer.Write("V4AEMesh\0"u8);
+        writer.Write((byte)0x17);
+        writer.Write((ushort)1);
+        WriteVector3(writer, new Vector3(10, 20, 30));
+        WriteGeometry(writer, includeAuxiliary: false);
+
+        writer.Write((ushort)0);
+        WriteScalarCurve(writer, 0, 1);
+        WriteScalarCurve(writer, 0, 2);
+        WriteScalarCurve(writer, 0, 3);
+
+        writer.Write((ushort)0);
+        WriteScalarCurve(writer, 0, 0);
+        WriteScalarCurve(writer, 0, MathF.PI / 2);
+        WriteScalarCurve(writer, 0, 0);
+
+        writer.Write((ushort)1);
+        writer.Write((ushort)1);
+        writer.Write(0f);
+        WriteVector3(writer, Vector3.One);
         writer.Write((short)-1);
         writer.Write((short)0);
         return stream.ToArray();

@@ -42,7 +42,10 @@ public static class SceneAnimationEvaluator
             float amount = span <= 1e-7f ? 0 : (time - previous.TimeSeconds) / span;
             return new SceneTransform(
                 Vector3.Lerp(previous.Translation, next.Translation, amount),
-                Quaternion.Normalize(Quaternion.Slerp(previous.Rotation, next.Rotation, amount)),
+                AemTransformSemantics.InterpolateEngineRotation(
+                    previous.Rotation,
+                    next.Rotation,
+                    amount),
                 Vector3.Lerp(previous.Scale, next.Scale, amount));
         }
 

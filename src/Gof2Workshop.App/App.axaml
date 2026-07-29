@@ -30,6 +30,47 @@
       <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
       <Setter Property="BorderThickness" Value="1" />
     </Style>
+    <Style Selector="views|CompactHorizontalScroller">
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Grid ColumnDefinitions="*,20,20">
+            <ScrollViewer Name="PART_ScrollViewer"
+                          HorizontalScrollBarVisibility="Hidden"
+                          VerticalScrollBarVisibility="Disabled">
+              <ContentPresenter Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}" />
+            </ScrollViewer>
+            <Button Name="PART_PreviousButton"
+                    Grid.Column="1"
+                    Classes="compactScroll"
+                    ToolTip.Tip="Scroll left"
+                    Content="‹" />
+            <Button Name="PART_NextButton"
+                    Grid.Column="2"
+                    Classes="compactScroll"
+                    ToolTip.Tip="Scroll right"
+                    Content="›" />
+          </Grid>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="Button.compactScroll">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="MinWidth" Value="20" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="1,3" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Opacity" Value="0.82" />
+    </Style>
+    <Style Selector="Button.compactScroll:pointerover">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="Background" Value="{DynamicResource SystemControlHighlightListLowBrush}" />
+    </Style>
   </Application.Styles>
 
   <Application.DataTemplates>

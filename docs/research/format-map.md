@@ -107,7 +107,8 @@ Observed signature/flag distribution:
 ### Unresolved
 
 - The semantic name of the optional four-f32 channel is not proven. It is provisionally exposed as a color-like auxiliary attribute and preserved.
-- Parent relationships are not present/proven. Static geometry is localized around each submesh pivot and the glTF node carries that pivot so transform animation rotates/scales around the preserved pivot.
-- Transform animation key times are milliseconds, converted to seconds. Translation/scale use linear interpolation and rotation uses quaternion slerp after the observed Euler-radian conversion.
+- Parent relationships are not stored in the examined AEM records. The reconstructed engine places multi-submesh meshes as siblings beneath a container transform, while each submesh retains its own pivot and animation transform. Static geometry is localized around each submesh pivot for glTF and its node carries that pivot.
+- Transform animation key times are milliseconds, converted to seconds. The PC corpus contains 150 animated files and 660 animated submeshes; all use scalar translation/rotation curves. Engine and independent importer behavior agree that scalar translation channels map to `(X, Z, -Y)`.
+- Euler-radian keys use the engine's signed quaternion construction and normalized linear quaternion interpolation. The previous generic yaw/pitch/roll plus slerp interpretation was contradicted by reconstructed engine behavior and caused incorrect axes/long-arc motion.
 - UV animation and v4/v5 special channels remain preserved but unresolved; they are not played or exported.
 - v1 and v3 have synthetic fixture coverage but no real local sample.

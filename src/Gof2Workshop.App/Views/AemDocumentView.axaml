@@ -8,8 +8,7 @@
   <Grid RowDefinitions="Auto,*">
     <Border Padding="7,5" BorderThickness="0,0,0,1"
             BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
-      <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                    VerticalScrollBarVisibility="Disabled">
+      <views:CompactHorizontalScroller ScrollStep="160">
         <StackPanel Orientation="Horizontal" Spacing="5">
         <Button Command="{Binding FrameAllCommand}" Content="Frame All" />
         <Button Command="{Binding FrameSelectedCommand}" Content="Frame Selected" />
@@ -40,7 +39,7 @@
         <TextBlock VerticalAlignment="Center" Foreground="#64B5F6"
                    FontSize="10" FontWeight="SemiBold" Text="{Binding OwnershipLabel}" />
         </StackPanel>
-      </ScrollViewer>
+      </views:CompactHorizontalScroller>
     </Border>
     <Grid Grid.Row="1" ColumnDefinitions="*,5,280">
       <Grid Background="#0E1218">
