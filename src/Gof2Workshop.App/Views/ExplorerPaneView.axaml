@@ -1,0 +1,112 @@
+<UserControl
+    x:Class="Gof2Workshop.App.Views.ExplorerPaneView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Border Classes="panel" IsVisible="{Binding ExplorerVisible}">
+    <Grid>
+      <Grid IsVisible="{Binding IsExplorerActivity}" RowDefinitions="Auto,*">
+        <Grid Margin="8,6" ColumnDefinitions="Auto,*,Auto">
+          <Button x:Name="FloatHandle" Padding="4,0" Margin="0,0,5,0"
+                  AutomationProperties.AutomationId="FloatExplorerPane"
+                  AutomationProperties.Name="Float Explorer pane"
+                  ToolTip.Tip="Drag to float Explorer; close the floating window to dock"
+                  Command="{Binding FloatExplorerCommand}"
+                  Content="⠿" />
+          <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12"
+                     FontWeight="SemiBold" Text="EXPLORER" />
+          <Button Grid.Column="2" Command="{Binding RescanCommand}"
+                  ToolTip.Tip="Refresh game assets" Content="↻" />
+        </Grid>
+        <TabControl Grid.Row="1">
+          <TabItem Header="Mod Workspace">
+            <Grid RowDefinitions="Auto,*">
+              <Border Margin="6" Padding="7" Background="#153022" CornerRadius="3">
+                <TextBlock Foreground="#89D6A0" FontSize="11"
+                           Text="USER-OWNED · exports and staged assets" />
+              </Border>
+              <TreeView Grid.Row="1" Margin="3" ItemsSource="{Binding ModAssetTree}"
+                        SelectedItem="{Binding SelectedTreeNode}"
+                        DoubleTapped="OnAssetDoubleTapped">
+                <TreeView.ItemTemplate>
+                  <TreeDataTemplate ItemsSource="{Binding Children}">
+                    <Grid ColumnDefinitions="18,*">
+                      <TextBlock Text="{Binding StatusGlyph}" Opacity="0.7" />
+                      <StackPanel Grid.Column="1">
+                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock FontSize="9" Opacity="0.52" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                    </Grid>
+                  </TreeDataTemplate>
+                </TreeView.ItemTemplate>
+              </TreeView>
+            </Grid>
+          </TabItem>
+          <TabItem Header="Game Assets">
+            <Grid RowDefinitions="Auto,Auto,*">
+              <Border Margin="6" Padding="7" Background="#182A3B" CornerRadius="3">
+                <TextBlock Foreground="#9CD6FF" FontSize="11"
+                           Text="ORIGINAL · IMMUTABLE SOURCE" />
+              </Border>
+              <Grid Grid.Row="1" Margin="6,0,6,6" ColumnDefinitions="*,Auto,Auto,Auto">
+                <TextBox PlaceholderText="Filter by name…" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" />
+                <Button Grid.Column="1" Margin="4,0,0,0"
+                        Command="{Binding SetActivityCommand}" CommandParameter="Search" Content="More…" />
+                <Button Grid.Column="2" Margin="4,0,0,0" ToolTip.Tip="Create a validated user-owned copy"
+                        Command="{Binding AddToModCommand}" Content="+ Mod" />
+                <Button Grid.Column="3" Margin="4,0,0,0" ToolTip.Tip="Validate and stage a replacement without changing the game"
+                        Command="{Binding ReplaceInModCommand}" Content="Replace…" />
+              </Grid>
+              <TreeView Grid.Row="2" Margin="3" ItemsSource="{Binding GameAssetTree}"
+                        SelectedItem="{Binding SelectedTreeNode}"
+                        DoubleTapped="OnAssetDoubleTapped">
+                <TreeView.ItemTemplate>
+                  <TreeDataTemplate ItemsSource="{Binding Children}">
+                    <Grid ColumnDefinitions="18,*">
+                      <TextBlock Text="{Binding StatusGlyph}" Foreground="#64B5F6" />
+                      <StackPanel Grid.Column="1">
+                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock FontSize="9" Opacity="0.52" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                    </Grid>
+                  </TreeDataTemplate>
+                </TreeView.ItemTemplate>
+              </TreeView>
+            </Grid>
+          </TabItem>
+        </TabControl>
+      </Grid>
+
+      <Grid IsVisible="{Binding IsSearchActivity}" RowDefinitions="Auto,Auto,Auto,*">
+        <TextBlock Margin="8,7" FontSize="12" FontWeight="SemiBold" Text="QUICK ASSET SEARCH" />
+        <TextBox Grid.Row="1" Margin="7" PlaceholderText="Type a file name…"
+                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" />
+        <Grid Grid.Row="2" Margin="7,0,7,6" ColumnDefinitions="*,*,*">
+          <ComboBox ItemsSource="{Binding KindFilters}" SelectedItem="{Binding KindFilter}" />
+          <ComboBox Grid.Column="1" Margin="4,0" ItemsSource="{Binding SupportFilters}" SelectedItem="{Binding SupportFilter}" />
+          <ComboBox Grid.Column="2" ItemsSource="{Binding FormatFilters}" SelectedItem="{Binding FormatFilter}" />
+        </Grid>
+        <ListBox Grid.Row="3" Margin="3" ItemsSource="{Binding SearchResults}"
+                 SelectedItem="{Binding SelectedGameAsset}" DoubleTapped="OnSearchDoubleTapped">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Grid Margin="5,3" RowDefinitions="Auto,Auto">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="1" Foreground="#64B5F6" Text="{Binding Kind}" />
+                </Grid>
+                <TextBlock Grid.Row="1" FontSize="9" Opacity="0.55"
+                           Text="{Binding RelativePath}" TextTrimming="CharacterEllipsis" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+
+      <StackPanel IsVisible="{Binding IsPlaceholderActivity}" Margin="18" Spacing="10">
+        <TextBlock FontSize="19" FontWeight="SemiBold" Text="{Binding ActiveActivity}" />
+        <TextBlock TextWrapping="Wrap" Opacity="0.72"
+                   Text="This activity is reserved for a future focused workbench tool. It does not expose nonfunctional editor commands." />
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

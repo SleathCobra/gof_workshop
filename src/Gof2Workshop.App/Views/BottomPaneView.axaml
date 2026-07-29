@@ -1,0 +1,60 @@
+<UserControl
+    x:Class="Gof2Workshop.App.Views.BottomPaneView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Border Classes="panel" IsVisible="{Binding BottomVisible}">
+    <Grid RowDefinitions="Auto,*">
+      <Grid Margin="5,2" ColumnDefinitions="Auto,*">
+        <Button x:Name="FloatHandle" Padding="4,0"
+                AutomationProperties.AutomationId="FloatBottomPane"
+                AutomationProperties.Name="Float bottom tool pane"
+                ToolTip.Tip="Drag to float tool pane; close the floating window to dock"
+                Command="{Binding FloatBottomCommand}"
+                Content="⠿" />
+        <TextBlock Grid.Column="1" Margin="5,0" VerticalAlignment="Center"
+                   FontSize="10" Opacity="0.6" Text="TOOL WINDOWS" />
+      </Grid>
+      <TabControl Grid.Row="1" SelectedIndex="{Binding ActiveBottomTabIndex}">
+        <TabItem Header="Output">
+          <ListBox ItemsSource="{Binding OutputEntries}">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Margin="6,2" FontFamily="Consolas" FontSize="11"
+                           Text="{Binding DisplayText}" TextWrapping="Wrap" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </TabItem>
+        <TabItem Header="Problems">
+          <Grid RowDefinitions="Auto,*">
+            <Grid Margin="6,4" ColumnDefinitions="70,170,120,*">
+              <TextBlock FontWeight="SemiBold" Text="Severity" />
+              <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Asset" />
+              <TextBlock Grid.Column="2" FontWeight="SemiBold" Text="Format" />
+              <TextBlock Grid.Column="3" FontWeight="SemiBold" Text="Message" />
+            </Grid>
+            <ListBox Grid.Row="1" ItemsSource="{Binding Problems}" DoubleTapped="OnProblemDoubleTapped">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Grid Margin="6,3" ColumnDefinitions="70,170,120,*">
+                    <TextBlock Text="{Binding Severity}" />
+                    <TextBlock Grid.Column="1" Text="{Binding AssetName}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="2" Text="{Binding Format}" TextTrimming="CharacterEllipsis" />
+                    <StackPanel Grid.Column="3">
+                      <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
+                      <TextBlock FontSize="10" Opacity="0.58" Text="{Binding SuggestedAction}" />
+                    </StackPanel>
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Grid>
+        </TabItem>
+        <TabItem Header="Asset Details">
+          <TextBox Margin="4" FontFamily="Consolas" FontSize="11" IsReadOnly="True"
+                   AcceptsReturn="True" TextWrapping="NoWrap" Text="{Binding AssetDetails}" />
+        </TabItem>
+      </TabControl>
+    </Grid>
+  </Border>
+</UserControl>

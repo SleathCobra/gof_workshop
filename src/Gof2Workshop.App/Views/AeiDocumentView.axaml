@@ -1,0 +1,62 @@
+<UserControl
+    x:Class="Gof2Workshop.App.Views.AeiDocumentView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:views="using:Gof2Workshop.App.Views">
+  <Grid RowDefinitions="Auto,*">
+    <Border Padding="7,5" BorderThickness="0,0,0,1"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                    VerticalScrollBarVisibility="Disabled">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+        <Button Click="OnFitClick" ToolTip.Tip="Fit the texture to the viewport" Content="Fit" />
+        <Button Click="OnActualSizeClick" ToolTip.Tip="Show one image pixel per screen pixel" Content="1:1" />
+        <ToggleButton IsChecked="{Binding ShowCheckerboard}" Content="Checker" />
+        <ToggleButton IsChecked="{Binding ShowRegions}" Content="Regions" />
+        <ToggleButton IsChecked="{Binding ShowLabels}" Content="Labels" />
+        <Button Command="{Binding ExportAtlasCommand}" Content="Export PNG" />
+        <Button Command="{Binding ExportSelectedRegionCommand}" Content="Export Region" />
+        <Button Command="{Binding SaveAeiCopyCommand}"
+                ToolTip.Tip="Write a validated AEI container copy outside the game folder"
+                Content="Save AEI Copy" />
+        <TextBlock Margin="10,0" VerticalAlignment="Center" Opacity="0.7"
+                   Text="{Binding DecodeStatus}" TextTrimming="CharacterEllipsis" />
+        <TextBlock VerticalAlignment="Center" Foreground="#64B5F6"
+                   FontSize="10" FontWeight="SemiBold" Text="{Binding OwnershipLabel}" />
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+    <Grid Grid.Row="1" ColumnDefinitions="*,5,260">
+      <Grid Background="#11151B">
+        <views:TextureCanvas x:Name="PreviewCanvas" Document="{Binding}" />
+        <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10" Padding="7,4"
+                Background="#CC111820" CornerRadius="3">
+          <TextBlock Text="{Binding SelectedSurface.Label}" />
+        </Border>
+        <ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="True"
+                     VerticalAlignment="Bottom" Height="3" />
+      </Grid>
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="#343B46" />
+      <Grid Grid.Column="2" RowDefinitions="Auto,Auto,*">
+        <TextBlock Classes="section" Text="SURFACE / MIP / FACE" />
+        <ComboBox Grid.Row="1" Margin="8,0,8,8" ItemsSource="{Binding Surfaces}"
+                  SelectedItem="{Binding SelectedSurface}" DisplayMemberBinding="{Binding Label}" />
+        <Grid Grid.Row="2" RowDefinitions="Auto,*">
+          <TextBlock Classes="section" Text="ATLAS REGIONS" />
+          <ListBox Grid.Row="1" Margin="4" ItemsSource="{Binding Regions}"
+                   SelectedItem="{Binding SelectedRegion}">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Grid ColumnDefinitions="48,*,Auto" Margin="4,2">
+                  <TextBlock Text="{Binding Index}" Foreground="#64B5F6" />
+                  <TextBlock Grid.Column="1" Text="{Binding X}" />
+                  <TextBlock Grid.Column="2" Text="{Binding Width}" Opacity="0.65" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Grid>
+      </Grid>
+    </Grid>
+  </Grid>
+</UserControl>

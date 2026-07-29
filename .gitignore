@@ -1,0 +1,21 @@
+# Proprietary local research corpus. Never commit game assets or derivatives.
+/data/
+
+# Generated previews, exports, inventories, and local compatibility evidence.
+/work/
+/artifacts/
+
+# Read-only local copies of third-party research repositories.
+/resources/
+
+# .NET build and test outputs.
+**/bin/
+**/obj/
+TestResults/
+
+# IDE and user-specific files.
+.vs/
+.idea/
+*.user
+*.suo
+

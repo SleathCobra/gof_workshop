@@ -1,0 +1,172 @@
+<Window
+    x:Class="Gof2Workshop.App.MainWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:views="using:Gof2Workshop.App.Views"
+    Title="Galaxy on Fire 2 Workshop"
+    Width="1500"
+    Height="920"
+    MinWidth="900"
+    MinHeight="600"
+    WindowStartupLocation="CenterScreen">
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Ctrl+N" Command="{Binding NewWorkspaceCommand}" />
+    <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenWorkspaceCommand}" />
+    <KeyBinding Gesture="Ctrl+Shift+O" Command="{Binding SelectGameFolderCommand}" />
+    <KeyBinding Gesture="Ctrl+P" Command="{Binding SetActivityCommand}" CommandParameter="Search" />
+    <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseDocumentCommand}" />
+    <KeyBinding Gesture="Ctrl+Shift+W" Command="{Binding CloseAllDocumentsCommand}" />
+    <KeyBinding Gesture="Ctrl+E" Command="{Binding ExportCurrentCommand}" />
+    <KeyBinding Gesture="Alt+Left" Command="{Binding PreviousDocumentCommand}" />
+    <KeyBinding Gesture="Alt+Right" Command="{Binding NextDocumentCommand}" />
+    <KeyBinding Gesture="F5" Command="{Binding RescanCommand}" />
+  </Window.KeyBindings>
+
+  <Grid x:Name="RootGrid" RowDefinitions="Auto,Auto,*,5,220,Auto">
+    <Menu>
+      <MenuItem Header="_File">
+        <MenuItem Header="_New Workspace…" InputGesture="Ctrl+N" Command="{Binding NewWorkspaceCommand}" />
+        <MenuItem Header="_Open Workspace…" InputGesture="Ctrl+O" Command="{Binding OpenWorkspaceCommand}" />
+        <MenuItem Header="_Close Workspace" Command="{Binding CloseWorkspaceCommand}" />
+        <Separator />
+        <MenuItem Header="Select _Game Folder…" InputGesture="Ctrl+Shift+O" Command="{Binding SelectGameFolderCommand}" />
+        <MenuItem Header="_Rescan Game Assets" InputGesture="F5" Command="{Binding RescanCommand}" />
+        <Separator />
+        <MenuItem Header="E_xit" Click="OnExitClick" />
+      </MenuItem>
+      <MenuItem Header="_Edit">
+        <MenuItem Header="Close _Document" InputGesture="Ctrl+W" Command="{Binding CloseDocumentCommand}" />
+        <MenuItem Header="Close _Other Documents" Command="{Binding CloseOtherDocumentsCommand}" />
+        <MenuItem Header="Close _All Documents" InputGesture="Ctrl+Shift+W" Command="{Binding CloseAllDocumentsCommand}" />
+      </MenuItem>
+      <MenuItem Header="_View">
+        <MenuItem Header="_Explorer / Search Pane" Command="{Binding ShowExplorerCommand}" />
+        <MenuItem Header="_Inspector Pane" Command="{Binding ShowInspectorCommand}" />
+        <MenuItem Header="_Bottom Tool Pane" Command="{Binding ShowBottomCommand}" />
+        <Separator />
+        <MenuItem Header="_Float / Dock Explorer" Command="{Binding FloatExplorerCommand}" />
+        <MenuItem Header="Float / Dock _Inspector" Command="{Binding FloatInspectorCommand}" />
+        <MenuItem Header="Float / Dock _Bottom Tools" Command="{Binding FloatBottomCommand}" />
+        <Separator />
+        <MenuItem Header="_Reset Layout" Command="{Binding ResetLayoutCommand}" />
+      </MenuItem>
+      <MenuItem Header="_Asset">
+        <MenuItem Header="_Open Asset" Command="{Binding OpenAssetCommand}" />
+        <MenuItem Header="_Add to Mod" Command="{Binding AddToModCommand}" />
+        <MenuItem Header="_Stage Replacement…" Command="{Binding ReplaceInModCommand}" />
+        <Separator />
+        <MenuItem Header="_Quick Search" InputGesture="Ctrl+P"
+                  Command="{Binding SetActivityCommand}" CommandParameter="Search" />
+        <MenuItem Header="_Reveal in Explorer" Command="{Binding RevealCommand}" />
+      </MenuItem>
+      <MenuItem Header="E_xport">
+        <MenuItem Header="_Export Current Asset…" InputGesture="Ctrl+E" Command="{Binding ExportCurrentCommand}" />
+      </MenuItem>
+      <MenuItem Header="_Tools">
+        <MenuItem Header="Open _Logs" Command="{Binding OpenLogsCommand}" />
+        <MenuItem Header="_Settings" Command="{Binding SetActivityCommand}" CommandParameter="Settings" />
+      </MenuItem>
+      <MenuItem Header="_Help">
+        <MenuItem Header="_Documentation / Research" Command="{Binding SetActivityCommand}" CommandParameter="Documentation" />
+        <Separator />
+        <MenuItem Header="_About" Command="{Binding AboutCommand}" />
+      </MenuItem>
+    </Menu>
+
+    <Border Grid.Row="1" Padding="7,5" BorderThickness="0,0,0,1"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+            Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,18,Auto,170,18,*,Auto" ColumnSpacing="6">
+        <Button ToolTip.Tip="New workspace (Ctrl+N)" Command="{Binding NewWorkspaceCommand}" Content="New" />
+        <Button Grid.Column="1" ToolTip.Tip="Open workspace (Ctrl+O)" Command="{Binding OpenWorkspaceCommand}" Content="Open" />
+        <Button Grid.Column="2" ToolTip.Tip="Select extracted game folder" Command="{Binding SelectGameFolderCommand}" Content="Game Folder" />
+        <Button Grid.Column="3" ToolTip.Tip="Rescan (F5)" Command="{Binding RescanCommand}" Content="↻ Scan" />
+        <TextBlock Grid.Column="5" VerticalAlignment="Center" Text="Profile" Opacity="0.65" />
+        <ComboBox Grid.Column="6" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
+                  DisplayMemberBinding="{Binding DisplayName}" />
+        <TextBlock Grid.Column="8" VerticalAlignment="Center" Text="{Binding WorkspaceName}"
+                   TextTrimming="CharacterEllipsis" FontWeight="SemiBold" />
+        <Button Grid.Column="9" Command="{Binding ExportCurrentCommand}" Content="Export Current" />
+      </Grid>
+    </Border>
+
+    <Grid x:Name="MainGrid" Grid.Row="2" ColumnDefinitions="42,300,5,*,5,300">
+      <Border Background="#171C23" BorderThickness="0,0,1,0"
+              BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto">
+          <Button Classes="rail" ToolTip.Tip="Explorer"
+                  Command="{Binding SetActivityCommand}" CommandParameter="Explorer" Content="▱" />
+          <Button Grid.Row="1" Classes="rail" ToolTip.Tip="Search (Ctrl+P)"
+                  Command="{Binding SetActivityCommand}" CommandParameter="Search" Content="⌕" />
+          <Button Grid.Row="2" Classes="rail" ToolTip.Tip="Problems"
+                  Command="{Binding SetBottomTabCommand}" CommandParameter="Problems" Content="⚠" />
+          <Button Grid.Row="4" Classes="rail" ToolTip.Tip="Documentation / Research"
+                  Command="{Binding SetActivityCommand}" CommandParameter="Documentation" Content="?" />
+          <Button Grid.Row="5" Classes="rail" ToolTip.Tip="Settings"
+                  Command="{Binding SetActivityCommand}" CommandParameter="Settings" Content="⚙" />
+        </Grid>
+      </Border>
+
+      <views:ExplorerPaneView x:Name="ExplorerHost" Grid.Column="1" />
+      <GridSplitter x:Name="ExplorerSplitter" Grid.Column="2" ResizeDirection="Columns"
+                    Background="#343B46" IsVisible="{Binding ExplorerVisible}" />
+
+      <Grid Grid.Column="3" RowDefinitions="Auto,*">
+        <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+          <Button Padding="7,2" ToolTip.Tip="Previous active document (Alt+Left)"
+                  Command="{Binding PreviousDocumentCommand}" Content="‹" />
+          <Button Grid.Column="1" Padding="7,2" ToolTip.Tip="Next active document (Alt+Right)"
+                  Command="{Binding NextDocumentCommand}" Content="›" />
+          <ScrollViewer Grid.Column="2" Height="34"
+                        HorizontalScrollBarVisibility="Auto"
+                        VerticalScrollBarVisibility="Disabled">
+            <TabStrip x:Name="DocumentTabs" Height="34" ItemsSource="{Binding Documents}"
+                      SelectedItem="{Binding SelectedDocument, Mode=TwoWay}">
+              <TabStrip.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </TabStrip.ItemsPanel>
+              <TabStrip.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="*,Auto" Width="180">
+                    <TextBlock Margin="6,0" VerticalAlignment="Center" Text="{Binding Title}"
+                               TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding SourcePath}" />
+                    <Button Grid.Column="1" Padding="5,1" Background="Transparent" BorderThickness="0"
+                            ToolTip.Tip="Close document" CommandParameter="{Binding}" Click="OnCloseTabClick" Content="×" />
+                  </Grid>
+                </DataTemplate>
+              </TabStrip.ItemTemplate>
+            </TabStrip>
+          </ScrollViewer>
+          <ComboBox Grid.Column="3" Width="190" Margin="4,0,0,0"
+                    ToolTip.Tip="All open documents"
+                    ItemsSource="{Binding Documents}"
+                    SelectedItem="{Binding SelectedDocument, Mode=TwoWay}"
+                    DisplayMemberBinding="{Binding Title}" />
+        </Grid>
+        <ContentControl Grid.Row="1" Content="{Binding SelectedDocument}" />
+      </Grid>
+
+      <GridSplitter x:Name="InspectorSplitter" Grid.Column="4" ResizeDirection="Columns"
+                    Background="#343B46" IsVisible="{Binding InspectorVisible}" />
+      <views:InspectorPaneView x:Name="InspectorHost" Grid.Column="5" />
+    </Grid>
+
+    <GridSplitter x:Name="BottomSplitter" Grid.Row="3" ResizeDirection="Rows"
+                  Background="#343B46" IsVisible="{Binding BottomVisible}" />
+    <views:BottomPaneView x:Name="BottomHost" Grid.Row="4" />
+
+    <Border Grid.Row="5" Padding="7,3" Background="#162A3D">
+      <Grid ColumnDefinitions="Auto,16,Auto,16,Auto,*,Auto,16,Auto">
+        <TextBlock Foreground="#B8DEFF" Text="{Binding SelectedProfile.DisplayName}" />
+        <TextBlock Grid.Column="2" Text="{Binding WorkspaceName}" />
+        <TextBlock Grid.Column="4" Text="{Binding GameRootStatus}" />
+        <TextBlock Grid.Column="5" Margin="20,0" Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
+        <TextBlock Grid.Column="6" Text="{Binding ScanStatus}" />
+        <ProgressBar Grid.Column="7" Width="70" Height="4" IsIndeterminate="True" IsVisible="{Binding IsScanning}" />
+        <TextBlock Grid.Column="8" Text="{Binding ActiveFileType}" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

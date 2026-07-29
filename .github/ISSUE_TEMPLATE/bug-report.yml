@@ -1,0 +1,40 @@
+name: Bug report
+description: Report a reproducible Workshop failure that is not a new binary variant.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: Windows version, .NET SDK version, profile
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Include a command and sanitized diagnostics. Do not attach game files.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Additional evidence
+      description: Logs, signatures, or safe metadata only.
+  - type: checkboxes
+    id: assets
+    attributes:
+      label: Asset confirmation
+      options:
+        - label: I have not attached or embedded proprietary game assets or derived exports.
+          required: true
+

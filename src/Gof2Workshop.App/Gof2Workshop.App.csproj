@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Gof2Workshop.Binary\Gof2Workshop.Binary.csproj" />
+    <ProjectReference Include="..\Gof2Workshop.Core\Gof2Workshop.Core.csproj" />
+    <ProjectReference Include="..\Gof2Workshop.Export\Gof2Workshop.Export.csproj" />
+    <ProjectReference Include="..\Gof2Workshop.Formats.Aei\Gof2Workshop.Formats.Aei.csproj" />
+    <ProjectReference Include="..\Gof2Workshop.Formats.Aem\Gof2Workshop.Formats.Aem.csproj" />
+    <ProjectReference Include="..\Gof2Workshop.Scene\Gof2Workshop.Scene.csproj" />
+    <ProjectReference Include="..\Gof2Workshop.Workbench\Gof2Workshop.Workbench.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+</Project>

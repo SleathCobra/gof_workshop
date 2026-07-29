@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Gof2Workshop.Core\Gof2Workshop.Core.csproj" />
+    <ProjectReference Include="..\Gof2Workshop.Binary\Gof2Workshop.Binary.csproj" />
+    <ProjectReference Include="..\Gof2Workshop.Formats.Aei\Gof2Workshop.Formats.Aei.csproj" />
+    <ProjectReference Include="..\Gof2Workshop.Formats.Aem\Gof2Workshop.Formats.Aem.csproj" />
+    <ProjectReference Include="..\Gof2Workshop.Scene\Gof2Workshop.Scene.csproj" />
+    <ProjectReference Include="..\Gof2Workshop.Export\Gof2Workshop.Export.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

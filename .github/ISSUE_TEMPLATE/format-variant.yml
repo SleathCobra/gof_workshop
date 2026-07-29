@@ -1,0 +1,49 @@
+name: Format variant
+description: Report an AEI/AEM signature or layout that is unsupported or misparsed.
+title: "[Format] "
+labels:
+  - format-research
+body:
+  - type: dropdown
+    id: format
+    attributes:
+      label: Format
+      options:
+        - AEI
+        - AEM
+    validations:
+      required: true
+  - type: input
+    id: profile
+    attributes:
+      label: Platform profile
+      placeholder: pc-1x or android
+    validations:
+      required: true
+  - type: textarea
+    id: signature
+    attributes:
+      label: Signature and diagnostics
+      description: Provide signature/version, safe offsets, observed values, and the controlled error. Do not paste asset bytes.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction command
+      description: Remove user-specific absolute paths.
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Research sources
+      description: Link factual documentation or describe independent observations and contradictions.
+  - type: checkboxes
+    id: assets
+    attributes:
+      label: Asset confirmation
+      options:
+        - label: I have not attached or embedded proprietary game assets or derived exports.
+          required: true
+

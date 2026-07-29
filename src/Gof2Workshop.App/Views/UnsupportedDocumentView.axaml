@@ -1,0 +1,21 @@
+<UserControl
+    x:Class="Gof2Workshop.App.Views.UnsupportedDocumentView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid Margin="36" RowDefinitions="Auto,Auto,*" MaxWidth="920">
+    <StackPanel Orientation="Horizontal" Spacing="12">
+      <TextBlock FontSize="28" Foreground="#F2C94C" Text="◇" />
+      <StackPanel>
+        <TextBlock FontSize="21" FontWeight="SemiBold" Text="Recognized format — preview unavailable" />
+        <TextBlock Foreground="#F2C94C" FontSize="11" FontWeight="SemiBold" Text="{Binding OwnershipLabel}" />
+      </StackPanel>
+    </StackPanel>
+    <Border Grid.Row="1" Margin="0,22,0,18" Padding="18" Background="#3A2C12" CornerRadius="4">
+      <TextBlock FontSize="15" TextWrapping="Wrap" Text="{Binding FriendlyMessage}" />
+    </Border>
+    <Expander Grid.Row="2" Header="Technical details" IsExpanded="True">
+      <TextBox FontFamily="Consolas" IsReadOnly="True" AcceptsReturn="True"
+               TextWrapping="Wrap" Text="{Binding TechnicalDetails}" />
+    </Expander>
+  </Grid>
+</UserControl>

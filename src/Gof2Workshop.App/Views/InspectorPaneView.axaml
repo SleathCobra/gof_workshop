@@ -1,0 +1,38 @@
+<UserControl
+    x:Class="Gof2Workshop.App.Views.InspectorPaneView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Border Classes="panel" IsVisible="{Binding InspectorVisible}">
+    <Grid RowDefinitions="Auto,*">
+      <Grid Classes="section" ColumnDefinitions="Auto,*">
+        <Button x:Name="FloatHandle" Padding="4,0" Margin="0,0,5,0"
+                AutomationProperties.AutomationId="FloatInspectorPane"
+                AutomationProperties.Name="Float Inspector pane"
+                ToolTip.Tip="Drag to float Inspector; close the floating window to dock"
+                Command="{Binding FloatInspectorCommand}"
+                Content="⠿" />
+        <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="INSPECTOR" />
+      </Grid>
+      <ScrollViewer Grid.Row="1">
+        <ItemsControl ItemsSource="{Binding InspectorGroups}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Expander Header="{Binding Name}" IsExpanded="{Binding IsInitiallyExpanded}" Margin="4,1">
+                <ItemsControl ItemsSource="{Binding Properties}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Grid Margin="7,4" ColumnDefinitions="110,*">
+                        <TextBlock Opacity="0.62" Text="{Binding Name}" ToolTip.Tip="{Binding ToolTip}" />
+                        <TextBlock Grid.Column="1" TextWrapping="Wrap" Text="{Binding Value}" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </Expander>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </Grid>
+  </Border>
+</UserControl>

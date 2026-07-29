@@ -1,0 +1,40 @@
+<UserControl
+    x:Class="Gof2Workshop.App.Views.WelcomeDocumentView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ScrollViewer>
+    <Grid MaxWidth="900" Margin="52" RowDefinitions="Auto,Auto,Auto,*">
+      <StackPanel Spacing="6">
+        <TextBlock FontSize="30" FontWeight="SemiBold" Text="Galaxy on Fire 2 Workshop" />
+        <TextBlock FontSize="17" Opacity="0.75" Text="A focused modding workbench for Abyss Engine assets" />
+      </StackPanel>
+      <Border Grid.Row="1" Margin="0,28,0,22" Padding="18" Classes="panel">
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="28">
+          <StackPanel Spacing="10">
+            <TextBlock FontSize="17" FontWeight="SemiBold" Text="Start" />
+            <Button Classes="command" Command="{Binding NewWorkspaceCommand}" HorizontalAlignment="Stretch"
+                    Content="Create Mod Workspace  (Ctrl+N)" />
+            <Button Classes="command" Command="{Binding OpenWorkspaceCommand}" HorizontalAlignment="Stretch"
+                    Content="Open Existing Workspace  (Ctrl+O)" />
+            <Button Classes="command" Command="{Binding SelectGameFolderCommand}" HorizontalAlignment="Stretch"
+                    Content="Select Game Asset Folder  (Ctrl+Shift+O)" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Spacing="9">
+            <TextBlock FontSize="17" FontWeight="SemiBold" Text="Safe by design" />
+            <TextBlock TextWrapping="Wrap"
+                       Text="Original game files are indexed and opened read-only. Exports go to your mod workspace or another explicit location." />
+            <Border Margin="0,8,0,0" Padding="12" Background="#182A3B" CornerRadius="4">
+              <TextBlock Foreground="#9CD6FF" TextWrapping="Wrap"
+                         Text="Choose PC 1.x for the validated DXT/raw and AEM v4/v5 corpus. Android is available as an explicit research profile." />
+            </Border>
+          </StackPanel>
+        </Grid>
+      </Border>
+      <StackPanel Grid.Row="2" Spacing="8">
+        <TextBlock FontSize="17" FontWeight="SemiBold" Text="Workbench workflow" />
+        <TextBlock Text="1  Open a workspace     2  Select a profile and asset root     3  Scan     4  Open AEI/AEM documents     5  Export copies" />
+        <TextBlock Opacity="0.65" Text="Mission graphs, scripts, UI design, and database editors will arrive as additional document providers." />
+      </StackPanel>
+    </Grid>
+  </ScrollViewer>
+</UserControl>
