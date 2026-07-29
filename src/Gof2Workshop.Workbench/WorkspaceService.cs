@@ -110,6 +110,16 @@ public sealed class WorkspaceService : IWorkspaceService
         }
 
         workspace.FilePath = fullPath;
+        if (!string.IsNullOrWhiteSpace(workspace.GameAssetRoot) &&
+            !Path.IsPathRooted(workspace.GameAssetRoot))
+        {
+            string workspaceDirectory = Path.GetDirectoryName(fullPath)
+                ?? throw new InvalidDataException("The workspace file has no parent directory.");
+            workspace.GameAssetRoot = Path.GetFullPath(
+                workspace.GameAssetRoot,
+                workspaceDirectory);
+        }
+
         workspace.Name = string.IsNullOrWhiteSpace(workspace.Name)
             ? Path.GetFileName(Path.GetDirectoryName(fullPath)) ?? "Untitled Mod"
             : workspace.Name;
@@ -120,6 +130,8 @@ public sealed class WorkspaceService : IWorkspaceService
             : workspace.OutputRoot;
         workspace.OpenDocuments ??= [];
         workspace.RecentAssets ??= [];
+        workspace.MaterialOverrides ??= new Dictionary<string, string>(
+            StringComparer.OrdinalIgnoreCase);
         workspace.Layout ??= new WorkbenchLayoutState();
         workspace.AssetFilter ??= new AssetFilterState();
         workspace.Layout.Normalize();

@@ -15,6 +15,9 @@ The desktop milestone adds two layers without changing the clean-room parser bou
 - document lifecycle, active-document tracking, deduplication, and restoration;
 - ordered editor-provider resolution.
 - validated Add to Mod/replacement staging with atomic copies and an audited operation manifest.
+- operation-based AEI edit sessions, undo/redo, versioned atomic recovery, and source-hash conflicts;
+- versioned distributable manifests plus validated deterministic mod builds;
+- confidence-bearing AEM-to-AEI relationships and workspace material overrides.
 
 It has no Avalonia dependency. Its services use records and interfaces that can be tested without a window.
 
@@ -30,6 +33,7 @@ It has no Avalonia dependency. Its services use records and interfaces that can 
 - Output, Problems, and Asset Details tools;
 - persisted split-pane sizes, visibility, and detachable Explorer/Inspector/bottom tool windows;
 - AEI and AEM editor providers.
+- a Changes activity for validated replacements, warnings, conflicts, validation, and builds.
 
 An editor provider receives an indexed asset and returns an `IDocument`. The workbench does not switch over every future file/editor type. Mission graphs, scripts, blueprint graphs, UI designers, database editors, and documentation pages can register providers and add their own view data template.
 
@@ -58,4 +62,8 @@ Game assets are always marked original/read-only. No command overwrites a source
 
 The shell uses grids, splitters, hideable pane hosts, and owned floating windows. Drag handles detach Explorer, Inspector, or bottom tools; closing a tool window docks the pane. Docked and floating panes are separate view instances bound to the same workbench state, which avoids moving controls between Avalonia visual roots. Floating state persists with the workspace. Layout state is independent of editor/provider logic, so arbitrary future docking zones can still map the same pane/document abstractions to a docking library.
 
-The AEM document requests a software render buffer from its actual logical viewport size and render scale, with bounded dimensions to avoid resize-driven allocation spikes. Animation evaluation belongs to `Gof2Workshop.Scene`; the Avalonia timer only advances a time value and requests a render. The same scene tracks feed glTF export.
+The AEM document uses a realtime `OpenGlControlBase` viewport by default and retains the adaptive
+software renderer as an explicit fallback. Both consume the same parser-neutral scene/camera and
+animation state. OpenGL mesh buffers are persistent, decoded AEI mip chains are cached and uploaded
+outside the per-frame path, and CPU ray picking runs only on clicks. Material resolution is an
+independent service; neither renderer parses AEM or AEI containers.

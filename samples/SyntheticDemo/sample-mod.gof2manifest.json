@@ -1,0 +1,9 @@
+{
+  "formatVersion": 1,
+  "modId": "workshop.synthetic-demo",
+  "name": "Public Synthetic Demo",
+  "author": "GOF2 Workshop contributors",
+  "version": "0.1.0",
+  "targetProfile": "pc-1x",
+  "assets": []
+}

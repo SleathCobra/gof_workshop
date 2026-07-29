@@ -102,6 +102,43 @@
         </ListBox>
       </Grid>
 
+      <Grid IsVisible="{Binding IsChangesActivity}" RowDefinitions="Auto,Auto,*,Auto,*">
+        <Grid Margin="8,6" ColumnDefinitions="*,Auto,Auto">
+          <TextBlock VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                     Text="CHANGES" />
+          <Button Grid.Column="1" Margin="4,0" Command="{Binding ValidateModCommand}"
+                  Content="Validate" />
+          <Button Grid.Column="2" Command="{Binding BuildModCommand}" Content="Build" />
+        </Grid>
+        <Border Grid.Row="1" Margin="6" Padding="7" Background="#153022" CornerRadius="3">
+          <TextBlock Foreground="#89D6A0" FontSize="10"
+                     Text="VALIDATED STAGED REPLACEMENTS" />
+        </Border>
+        <ListBox Grid.Row="2" Margin="3" ItemsSource="{Binding Changes}">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <StackPanel Margin="5,3">
+                <TextBlock FontWeight="SemiBold" Text="{Binding Target}"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock FontSize="9" Opacity="0.6" Text="{Binding ModFile}"
+                           TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <TextBlock Grid.Row="3" Classes="section" Text="WARNINGS / CONFLICTS" />
+        <ListBox Grid.Row="4" Margin="3" ItemsSource="{Binding ChangeIssues}">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <StackPanel Margin="5,3">
+                <TextBlock Foreground="#FFB74D" Text="{Binding Severity}" />
+                <TextBlock FontSize="10" TextWrapping="Wrap" Text="{Binding Message}" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+
       <StackPanel IsVisible="{Binding IsPlaceholderActivity}" Margin="18" Spacing="10">
         <TextBlock FontSize="19" FontWeight="SemiBold" Text="{Binding ActiveActivity}" />
         <TextBlock TextWrapping="Wrap" Opacity="0.72"

@@ -18,6 +18,8 @@ The Workshop is an independent MIT-licensed C# implementation. Local research re
 | AEM v2/v3 fixed-point geometry, bounds, and v3 animation position | AEMesh; DeepOpen | Real corpus v2 file parses/renders/exports as a four-vertex plane; synthetic v2/v3 fixtures validate numeric conversion, bounds, and animation alignment | Cross-source facts independently validated against samples |
 | AEM transform key time unit | AEMesh behavioral tooling describes millisecond key times | Corpus animation durations become plausible seconds after `/1000`; a 0-to-10, 1000 ms fixture evaluates to 5 at 0.5 s and exports a glTF translation channel | Behavioral observation plus independent evaluator/export test |
 | AEM v1-v5 structural writing | Parsed field order and numeric encodings documented above | Independent writer reproduces every version fixture and all 752 parsed corpus files byte-for-byte; an edited v4 position reparses with the new value | Clean-room serialization from the independently reconstructed model; no reference implementation copied |
+| AEM-to-AEI material relationship | DeepOpen resource-loading behavior; local file/folder naming | High-resolution `*_diffuse.aei` matches were inspected on real textured models; every inferred result retains its strategy and confidence | External-resource behavior plus independently tested corpus heuristics; no material field is invented in AEM |
+| BC1/BC2/BC3 encoding | Public block-compression formats; BCnEncoder.Net API | Synthetic raw/BC1/BC2/BC3 reconstruction reparses and decodes; surface byte counts and container metadata are asserted | Third-party managed encoder behind a Workshop-owned interface, followed by independent decoder validation |
 
 ## License boundary
 
@@ -25,6 +27,7 @@ The Workshop is an independent MIT-licensed C# implementation. Local research re
 - AEIporter and KaamoClubModApi are GPL-3.0. Their code is not used.
 - The local AEMesh, DeepOpen, and gof2hd-decomp copies do not contain a top-level license file identifiable during this review. They are treated only as non-redistributed research material.
 - `AssetRipper.TextureDecoder` 2.6.2 is an MIT-licensed, managed, dependency-free runtime package used only for PVRTC/ETC/ATC block decoding. No source is copied into the Workshop; the adapter validates lengths and converts the package's generic RGBA values into the Workshop-owned image model.
+- `BCnEncoder.Net` 2.3.0 is MIT OR Unlicense, managed, and has no native dependency. It is used only for BC1/BC2/BC3 compression; AEI container reconstruction, mip layout, validation, and pixel comparison remain Workshop-owned.
 - BC decoding, PNG writing, software preview rendering, OBJ writing, and glTF writing remain independent C# implementations based on public format specifications and sample validation.
 - Test-framework packages, if present, are development-only and are recorded in `docs/research/dependencies.md`.
 

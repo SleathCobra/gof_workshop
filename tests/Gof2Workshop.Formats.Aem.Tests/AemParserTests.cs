@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Text.Json;
 using Gof2Workshop.Binary;
+using Gof2Workshop.Core;
 using Gof2Workshop.Export;
 using Gof2Workshop.Scene;
 
@@ -164,6 +165,45 @@ public sealed class AemParserTests
             Assert.AreEqual(new FileInfo(gltf.BinaryPath).Length, declaredLength);
             Assert.AreEqual(128, preview.Image.Width);
             Assert.IsGreaterThan(0, preview.RenderedTriangleCount);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void GltfExporterWritesDeduplicatedTextureAndMaterialBinding()
+    {
+        using MemoryStream stream = new(CreateV4Fixture(includeAuxiliary: false));
+        SceneDocument scene = new AemSceneConverter().Convert(
+            new AemParser().Parse(stream, "textured-triangle.aem"));
+        RgbaImage texture = new(2, 2);
+        texture.PixelBytes.Fill(255);
+        string directory = Path.Combine(
+            Path.GetTempPath(),
+            "gof2-workshop-tests",
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            GltfExportResult result = new GltfExporter().ExportWithMaterials(
+                scene,
+                directory,
+                "textured",
+                [new GltfTextureAssignment(0, "synthetic-cache-key", "Synthetic", texture, true)]);
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(result.GltfPath));
+
+            Assert.HasCount(1, result.TexturePaths!);
+            Assert.HasCount(0, result.UnresolvedMaterialPrimitives!);
+            Assert.AreEqual(1, document.RootElement.GetProperty("images").GetArrayLength());
+            Assert.AreEqual(1, document.RootElement.GetProperty("textures").GetArrayLength());
+            Assert.AreEqual(
+                "BLEND",
+                document.RootElement.GetProperty("materials")[0].GetProperty("alphaMode").GetString());
+            Assert.IsTrue(File.Exists(result.TexturePaths![0]));
         }
         finally
         {

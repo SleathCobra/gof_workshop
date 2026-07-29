@@ -1,0 +1,15 @@
+{
+  "FormatVersion": 1,
+  "Name": "Public Synthetic Demo",
+  "ModId": "workshop.synthetic-demo",
+  "Author": "GOF2 Workshop contributors",
+  "ModVersion": "0.1.0",
+  "ProfileId": "pc-1x",
+  "GameAssetRoot": "Assets",
+  "ModRoot": "SampleMod",
+  "OutputRoot": "SampleMod/Generated",
+  "OpenDocuments": [],
+  "MaterialOverrides": {
+    "Models/synthetic_cube.aem#primitive=0": "Textures/synthetic_cube.aei"
+  }
+}

@@ -10,6 +10,12 @@ public sealed class WorkspaceDefinition
 
     public string Name { get; set; } = "Untitled Mod";
 
+    public string ModId { get; set; } = "local.untitled-mod";
+
+    public string Author { get; set; } = string.Empty;
+
+    public string ModVersion { get; set; } = "0.1.0";
+
     public string ProfileId { get; set; } = "pc-1x";
 
     public string? GameAssetRoot { get; set; }
@@ -27,6 +33,9 @@ public sealed class WorkspaceDefinition
     public AssetFilterState AssetFilter { get; set; } = new();
 
     public List<string> RecentAssets { get; set; } = [];
+
+    public Dictionary<string, string> MaterialOverrides { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
 
     [JsonIgnore]
     public string? FilePath { get; set; }

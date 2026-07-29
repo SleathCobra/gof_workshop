@@ -1,5 +1,6 @@
 using System.Text;
 using Gof2Workshop.Core;
+using Gof2Workshop.Formats.Aei;
 
 namespace Gof2Workshop.Workbench.Tests;
 
@@ -53,6 +54,32 @@ public sealed class WorkbenchServiceTests
         Assert.IsTrue(Directory.Exists(Path.Combine(temporaryRoot, "Assets", "Models")));
         Assert.IsTrue(Directory.Exists(Path.Combine(temporaryRoot, "Generated")));
         Assert.IsTrue(loaded.Warnings.Any(value => value.Contains("game asset", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [TestMethod]
+    public async Task WorkspaceLoadResolvesRelativeGameRootFromWorkspaceDirectory()
+    {
+        string assetRoot = Path.Combine(temporaryRoot, "Assets");
+        Directory.CreateDirectory(assetRoot);
+        string workspacePath = Path.Combine(temporaryRoot, "project.gof2workspace");
+        await File.WriteAllTextAsync(
+            workspacePath,
+            """
+            {
+              "formatVersion": 1,
+              "name": "Relative root",
+              "profileId": "pc-1x",
+              "gameAssetRoot": "Assets",
+              "modRoot": ".",
+              "outputRoot": "Generated"
+            }
+            """);
+
+        WorkspaceLoadResult result = await new WorkspaceService().LoadAsync(workspacePath);
+
+        Assert.AreEqual(Path.GetFullPath(assetRoot), result.Workspace.GameAssetRoot);
+        Assert.IsFalse(result.Warnings.Any(value =>
+            value.Contains("game asset folder is missing", StringComparison.OrdinalIgnoreCase)));
     }
 
     [TestMethod]
@@ -411,6 +438,95 @@ public sealed class WorkbenchServiceTests
         CollectionAssert.AreEqual(original, await File.ReadAllBytesAsync(sourcePath));
         string manifest = Path.Combine(modRoot, ".work", "asset-operations.json");
         StringAssert.Contains(await File.ReadAllTextAsync(manifest), "\"Replace\"");
+
+        workspace.ModId = "tests.synthetic";
+        workspace.Author = "Workshop tests";
+        ModBuildService buildService = new(workspaceService);
+        ModBuildResult firstBuild = await buildService.BuildAsync(workspace);
+        ModBuildResult secondBuild = await buildService.BuildAsync(workspace);
+        Assert.AreEqual(firstBuild.Report.ContentSha256, secondBuild.Report.ContentSha256);
+        Assert.HasCount(1, secondBuild.Report.Assets);
+        Assert.IsTrue(File.Exists(secondBuild.ManifestPath));
+        Assert.IsTrue(File.Exists(Path.Combine(
+            secondBuild.OutputDirectory,
+            "Assets",
+            "textures",
+            "sample.aei")));
+
+        await File.WriteAllBytesAsync(sourcePath, CreateRawAei(1, 2, 3, 255));
+        ModValidationResult conflict = await buildService.ValidateAsync(workspace);
+        Assert.IsFalse(conflict.IsValid);
+        Assert.IsTrue(conflict.Issues.Any(issue =>
+            issue.Severity == ModValidationSeverity.Error
+            && issue.Message.Contains("source hash", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [TestMethod]
+    public void AeiEditSessionSupportsUndoRedoDivergenceAndValidation()
+    {
+        AeiFile file = ParseEditableAei();
+        RgbaImage original = new AeiTextureDecoder().DecodeAtlas(file);
+        AeiEditSession session = new(
+            "textures/editable.aei",
+            new string('a', 64),
+            "Assets/Textures/textures/editable.aei",
+            file,
+            original);
+        RgbaImage green = SolidImage(1, 1, new Rgba32(0, 255, 0, 255));
+        RgbaImage blue = SolidImage(1, 1, new Rgba32(0, 0, 255, 255));
+
+        session.ReplaceRegion(0, green);
+        Assert.AreEqual(new Rgba32(0, 255, 0, 255), session.WorkingAtlas.GetPixel(0, 0));
+        session.Undo();
+        Assert.AreEqual(new Rgba32(255, 0, 0, 255), session.WorkingAtlas.GetPixel(0, 0));
+        session.Redo();
+        Assert.AreEqual(new Rgba32(0, 255, 0, 255), session.WorkingAtlas.GetPixel(0, 0));
+        session.Undo();
+        session.ReplaceRegion(0, blue);
+
+        Assert.IsFalse(session.CanRedo);
+        Assert.HasCount(1, session.Operations);
+        AeiEncodingResult validation = session.Validate();
+        Assert.AreEqual(EditValidationState.Valid, session.ValidationState);
+        Assert.AreEqual(new Rgba32(0, 0, 255, 255), validation.DecodedAtlas.GetPixel(0, 0));
+    }
+
+    [TestMethod]
+    public async Task RecoveryRoundTripsAndRefusesChangedSourceHash()
+    {
+        string modRoot = Path.Combine(temporaryRoot, "mod");
+        AeiFile file = ParseEditableAei();
+        RgbaImage original = new AeiTextureDecoder().DecodeAtlas(file);
+        AeiEditSession session = new(
+            "textures/editable.aei",
+            new string('b', 64),
+            "Assets/Textures/textures/editable.aei",
+            file,
+            original);
+        session.ReplaceRegion(0, SolidImage(1, 1, new Rgba32(12, 34, 56, 255)));
+        RecoveryService recoveryService = new();
+
+        await recoveryService.SaveAsync(modRoot, session);
+        AeiRecoveryDocument recovery = (await recoveryService.LoadAsync(
+            modRoot,
+            session.SourceGameRelativePath))!;
+        AeiEditSession restored = new(
+            session.SourceGameRelativePath,
+            session.OriginalSourceSha256,
+            session.ModRelativeOutputPath,
+            file,
+            original);
+        restored.Replay(recovery);
+
+        Assert.AreEqual(new Rgba32(12, 34, 56, 255), restored.WorkingAtlas.GetPixel(0, 0));
+        AeiEditSession conflict = new(
+            session.SourceGameRelativePath,
+            new string('c', 64),
+            session.ModRelativeOutputPath,
+            file,
+            original);
+        Assert.Throws<InvalidDataException>(() => conflict.Replay(recovery));
+        Assert.AreEqual(EditValidationState.Conflict, conflict.ValidationState);
     }
 
     private IndexedAsset CreateIndexed(
@@ -470,6 +586,42 @@ public sealed class WorkbenchServiceTests
         writer.Write(alpha);
         writer.Write((ushort)0);
         return stream.ToArray();
+    }
+
+    private static AeiFile ParseEditableAei()
+    {
+        using MemoryStream stream = new();
+        using (BinaryWriter writer = new(stream, Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write("AEimage\0"u8);
+            writer.Write((byte)0x01);
+            writer.Write((ushort)2);
+            writer.Write((ushort)1);
+            writer.Write((ushort)1);
+            writer.Write((ushort)0);
+            writer.Write((ushort)0);
+            writer.Write((ushort)1);
+            writer.Write((ushort)1);
+            writer.Write(new byte[] { 255, 0, 0, 255, 255, 255, 255, 255 });
+            writer.Write((ushort)0);
+        }
+
+        stream.Position = 0;
+        return new AeiParser().Parse(stream, "editable.aei");
+    }
+
+    private static RgbaImage SolidImage(int width, int height, Rgba32 color)
+    {
+        RgbaImage image = new(width, height);
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                image.SetPixel(x, y, color);
+            }
+        }
+
+        return image;
     }
 
     private sealed class FakeDocument : IDocument

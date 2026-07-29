@@ -18,7 +18,10 @@ Validated locally against an ignored Galaxy on Fire 2 corpus:
 - Off-screen AEM preview with solid fill, wireframe, normal lines, pivot markers, bounding spheres, and submesh colors.
 - Avalonia IDE workbench with separate mod/game explorers, background indexing, quick search, tabbed AEI/AEM documents, Inspector, Output, Problems, and persisted workspace/layout state.
 - Interactive AEI atlas pan/zoom, region overlays and selection, surface/mip/face navigation, and PNG/region/overlay export.
-- Interactive, viewport-sized software AEM renderer with orbit/pan/zoom, perspective, animation playback, submesh selection/isolation, wireframe, normals, pivots, bounds, winding diagnostics, and glTF/OBJ export commands.
+- Realtime OpenGL AEM viewport with textured/lit/unlit/diagnostic modes, orbit/pan/zoom, animation playback, picking, isolation, wireframe, normals, pivots, bounds, winding, culling, and controlled software fallback.
+- Confidence-bearing AEM-to-AEI material resolution, persisted manual overrides, cached mip uploads, and textured glTF export.
+- AEI per-region PNG import with immutable original/working views, undo/redo, atomic recovery, raw/BC1/BC2/BC3 encoding, reparse/decode validation, staging, and revert.
+- Changes activity, source-hash conflict detection, versioned mod manifests, and deterministic validated Build Mod output.
 - Non-wrapping, horizontally scrollable document tabs, an all-documents picker, back/forward document history, and persisted detachable Explorer, Inspector, and bottom tool windows.
 - Validated Add to Mod and replacement staging with an audited operation manifest; loss-preserving AEI and reconstructed AEM v1-v5 writers never overwrite the game root.
 
@@ -30,7 +33,9 @@ See [the anonymized local corpus report](docs/compatibility/local-corpus-report.
 - [.NET SDK 10.0.302](https://dotnet.microsoft.com/) or a compatible .NET 10 feature-band SDK.
 - A legally obtained, locally extracted Galaxy on Fire 2 asset folder for integration testing.
 
-Most parser, scene, export, CLI, and nonvisual workbench code uses only the .NET base class library. The AEI parser uses the managed MIT-licensed `AssetRipper.TextureDecoder` 2.6.2 adapter for PVRTC/ETC/ATC; the desktop application uses Avalonia 12.1.0; MSTest is test-only.
+The AEI library uses managed `AssetRipper.TextureDecoder` 2.6.2 for PVRTC/ETC/ATC and
+`BCnEncoder.Net` 2.3.0 for BC1/BC2/BC3 encoding. Both have MIT-compatible licensing and no native
+runtime dependency. The desktop application uses Avalonia 12.1.0; MSTest is test-only.
 
 ## Keep proprietary assets local
 
@@ -121,7 +126,10 @@ Then:
 5. double-click an AEI or AEM in **Game Assets**, or use `Ctrl+P`;
 6. export copies with `Ctrl+E` or the document toolbar.
 
-Use **Add to Mod** to create a validated user-owned copy or **Stage Replacement** to validate and audit a complete replacement file. These operations write only beneath the mod workspace. `Save AEI Copy` reconstructs the preserved AEI container; `Save AEM Copy` serializes the validated version-specific model. Unchanged AEM models reproduce the original bytes exactly.
+Select an AEI region and use **Import Region** for a matching PNG. Undo/redo operates on edit
+operations; **Validate** encodes using the preserved codec, reconstructs, reparses, and decodes the
+container; only then does **Stage** become available. The Changes activity validates source hashes
+and builds a distributable manifest/output without touching the game root.
 
 The original game root is immutable to the application. Export validation refuses the root itself and all descendants. Workspaces contain only configuration, mod-owned assets, generated files, and local state:
 
@@ -177,9 +185,9 @@ Parser projects do not depend on Avalonia or the CLI. The desktop application di
 - AEM v1-v3 geometry parsing is implemented from independently validated historical layouts. The local corpus contains one real v2 file; v1/v3 remain synthetic-fixture validated.
 - Transform animation uses source milliseconds, linear translation/scale interpolation, and quaternion rotation interpolation. UV and unresolved special channels remain preserved but are not played or exported.
 - The source AEM coordinate convention is preserved. Handedness, up-axis, pivot hierarchy, and the semantic name of the optional float4 channel remain under validation.
-- The desktop model viewport is an adaptive-resolution software preview capped at 2,048 pixels per side and three million pixels. It is diagnostic rather than a GPU production renderer; dense scenes may redraw more slowly while overlays are enabled.
+- OpenGL is the primary desktop model viewport. The adaptive software preview remains available for fallback, deterministic images, and headless validation.
 - Pane drag handles detach Explorer, Inspector, and bottom tools into owned windows and persist that state. Arbitrary docking zones/tab groups are not implemented.
-- AEI writing supports faithful container reconstruction and same-length encoded payload replacement; image-to-BC/PVRTC/ETC/ATC encoding and per-region replacement are not yet implemented.
+- AEI writing supports raw RGBA and BC1/BC2/BC3 source-preserving encoding and same-size region/full-atlas edits. PVRTC/ETC/ATC encoding, atlas resizing, and metadata layout edits are not implemented.
 - AEM writing serializes the parsed v1-v5 geometry, bounds, supported channels, and animation records. All 752 unchanged corpus models round-trip byte-for-byte. The workbench does not yet expose geometry-authoring controls; v1 topology edits must retain a representable source strip grouping.
 
 ## Research and licensing

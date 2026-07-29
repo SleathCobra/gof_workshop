@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <PackageReference Include="AssetRipper.TextureDecoder" Version="2.6.2" />
+    <PackageReference Include="BCnEncoder.Net" Version="2.3.0" />
     <ProjectReference Include="..\Gof2Workshop.Core\Gof2Workshop.Core.csproj" />
     <ProjectReference Include="..\Gof2Workshop.Binary\Gof2Workshop.Binary.csproj" />
   </ItemGroup>

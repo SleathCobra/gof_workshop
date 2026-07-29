@@ -75,6 +75,7 @@ internal static class Program
             "aem-preview" => AemPreview(args, logger, cancellationToken),
             "view" => View(args, logger, cancellationToken),
             "validate-corpus" => ValidateCorpus(args, logger, cancellationToken),
+            "generate-synthetic" => GenerateSynthetic(args, logger),
             _ => throw new ArgumentException($"Unknown command '{args.Command}'. Run 'help' for usage."),
         };
     }
@@ -379,9 +380,21 @@ internal static class Program
               aem-preview <file> [--output work/name-preview.png] [--size 1024]
               view <file> [--output path]
               validate-corpus <folder> [--decode] [--limit N] [--json work/validation.json]
+              generate-synthetic [--output samples/SyntheticDemo]
 
             Generated outputs should remain under the ignored work/ directory.
             """);
+        return 0;
+    }
+
+    private static int GenerateSynthetic(CliArguments args, CliLogger logger)
+    {
+        string output = args.GetOption("output", Path.Combine("samples", "SyntheticDemo"));
+        SyntheticDemoGenerator.Generate(output);
+        logger.Info(
+            "synthetic.generated",
+            "Original CC0/MIT demonstration assets generated.",
+            ("output", DisplayPath(output)));
         return 0;
     }
 }

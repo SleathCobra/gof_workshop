@@ -4,6 +4,7 @@ using System.Text.Json;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Gof2Workshop.App.Presentation;
+using Gof2Workshop.App.Rendering;
 using Gof2Workshop.App.Views;
 using Gof2Workshop.Binary;
 using Gof2Workshop.Core;
@@ -18,6 +19,13 @@ namespace Gof2Workshop.App.Documents;
 public interface IExportableDocument
 {
     public Task ExportDefaultAsync();
+}
+
+public interface IUndoableDocument
+{
+    public System.Windows.Input.ICommand UndoCommand { get; }
+
+    public System.Windows.Input.ICommand RedoCommand { get; }
 }
 
 public abstract class DocumentViewModelBase : ObservableObject, IDocument, IInspectorSource
@@ -191,21 +199,28 @@ public sealed record AeiSurfaceOption(
 
 public sealed class AeiDocumentViewModel :
     DocumentViewModelBase,
-    IExportableDocument
+    IExportableDocument,
+    IUndoableDocument
 {
     private readonly AeiTextureDecoder decoder = new();
     private readonly IUserDialogService dialogs;
     private readonly IOutputService output;
     private readonly IProblemService problems;
     private readonly WorkspaceDefinition workspace;
+    private readonly IWorkspaceService workspaceService;
+    private readonly string originalSourceHash;
+    private readonly RecoveryService recoveryService = new();
     private WriteableBitmap? previewBitmap;
     private RgbaImage? currentImage;
+    private RgbaImage? originalImage;
+    private AeiEditSession? editSession;
     private AeiSurfaceOption? selectedSurface;
     private AeiRegion? selectedRegion;
     private bool showCheckerboard = true;
     private bool showRegions = true;
     private bool showLabels = true;
     private bool isBusy;
+    private bool showOriginal;
     private string decodeStatus;
 
     public AeiDocumentViewModel(
@@ -215,7 +230,9 @@ public sealed class AeiDocumentViewModel :
         WorkspaceDefinition workspace,
         IUserDialogService dialogs,
         IOutputService output,
-        IProblemService problems)
+        IProblemService problems,
+        IWorkspaceService workspaceService,
+        string originalSourceHash)
         : base(
             DocumentManager.NormalizeDocumentId(asset.FullPath),
             asset.FileName,
@@ -229,8 +246,11 @@ public sealed class AeiDocumentViewModel :
         this.dialogs = dialogs;
         this.output = output;
         this.problems = problems;
+        this.workspaceService = workspaceService;
+        this.originalSourceHash = originalSourceHash;
         Surfaces = file.Surfaces.Select(AeiSurfaceOption.FromSurface).ToArray();
         selectedSurface = Surfaces.Count > 0 ? Surfaces[0] : null;
+        selectedRegion = file.Regions.Count > 0 ? file.Regions[0] : null;
         decodeStatus = decoder.CanDecode(file.Format.Format)
             ? "Decoded"
             : $"Recognized, decoder unavailable: {file.Format.DisplayName}";
@@ -240,8 +260,27 @@ public sealed class AeiDocumentViewModel :
             () => currentImage is not null && SelectedRegion is not null);
         ExportAllCommand = new AsyncRelayCommand(ExportAllAsync);
         SaveAeiCopyCommand = new AsyncRelayCommand(SaveAeiCopyAsync);
+        ImportRegionCommand = new AsyncRelayCommand(
+            ImportRegionAsync,
+            () => currentImage is not null && SelectedRegion is not null);
+        UndoCommand = new RelayCommand(_ => Undo(), _ => editSession?.CanUndo == true);
+        RedoCommand = new RelayCommand(_ => Redo(), _ => editSession?.CanRedo == true);
+        ValidateWorkingCommand = new AsyncRelayCommand(
+            ValidateWorkingAsync,
+            () => editSession?.IsDirty == true);
+        StageWorkingCommand = new AsyncRelayCommand(
+            StageWorkingAsync,
+            () => editSession?.ValidationState == EditValidationState.Valid
+                && Asset.Ownership == AssetOwnership.Game);
+        RevertWorkingCommand = new RelayCommand(
+            _ => RevertWorking(),
+            _ => editSession?.IsDirty == true);
         if (initialImage is not null)
         {
+            originalImage = new RgbaImage(
+                initialImage.Width,
+                initialImage.Height,
+                initialImage.ReadOnlyPixelBytes);
             SetImage(initialImage);
         }
     }
@@ -261,6 +300,49 @@ public sealed class AeiDocumentViewModel :
     }
 
     public RgbaImage? CurrentImage => currentImage;
+
+    public bool HasEditSession => editSession is not null;
+
+    public bool IsDirty => editSession?.IsDirty == true;
+
+    public string EditState => editSession switch
+    {
+        null => IsReadOnly ? "ORIGINAL · READ ONLY" : "MOD WORKSPACE",
+        { ValidationState: EditValidationState.Valid } => "WORKING · VALIDATED",
+        { ValidationState: EditValidationState.Invalid } => "WORKING · INVALID",
+        { ValidationState: EditValidationState.Conflict } => "WORKING · SOURCE CONFLICT",
+        _ => "WORKING · UNSAVED OPERATIONS",
+    };
+
+    public string DifferenceSummary
+    {
+        get
+        {
+            if (editSession is null)
+            {
+                return "No working changes";
+            }
+
+            AeiPixelDifference difference = AeiAtlasEditing.Compare(
+                editSession.OriginalAtlas,
+                editSession.WorkingAtlas);
+            return $"{difference.ChangedPixels:N0} pixels changed · " +
+                $"{difference.ChangedAlphaPixels:N0} alpha pixels · " +
+                $"max Δ {difference.MaximumChannelError}";
+        }
+    }
+
+    public bool ShowOriginal
+    {
+        get => showOriginal;
+        set
+        {
+            if (SetProperty(ref showOriginal, value) && editSession is not null)
+            {
+                SetImage(value ? editSession.OriginalAtlas : editSession.WorkingAtlas);
+            }
+        }
+    }
 
     public AeiSurfaceOption? SelectedSurface
     {
@@ -283,6 +365,7 @@ public sealed class AeiDocumentViewModel :
             if (SetProperty(ref selectedRegion, value))
             {
                 ((AsyncRelayCommand)ExportSelectedRegionCommand).RaiseCanExecuteChanged();
+                ((AsyncRelayCommand)ImportRegionCommand).RaiseCanExecuteChanged();
                 RaiseInspectorChanged();
             }
         }
@@ -326,6 +409,18 @@ public sealed class AeiDocumentViewModel :
 
     public System.Windows.Input.ICommand SaveAeiCopyCommand { get; }
 
+    public System.Windows.Input.ICommand ImportRegionCommand { get; }
+
+    public System.Windows.Input.ICommand UndoCommand { get; }
+
+    public System.Windows.Input.ICommand RedoCommand { get; }
+
+    public System.Windows.Input.ICommand ValidateWorkingCommand { get; }
+
+    public System.Windows.Input.ICommand StageWorkingCommand { get; }
+
+    public System.Windows.Input.ICommand RevertWorkingCommand { get; }
+
     public override IReadOnlyList<InspectorGroup> InspectorGroups
     {
         get
@@ -342,6 +437,8 @@ public sealed class AeiDocumentViewModel :
                         new InspectorProperty("Mip levels", File.MipLevelCount.ToString(CultureInfo.InvariantCulture)),
                         new InspectorProperty("Cube faces", File.FaceCount.ToString(CultureInfo.InvariantCulture)),
                         new InspectorProperty("Atlas regions", File.Regions.Count.ToString(CultureInfo.InvariantCulture)),
+                        new InspectorProperty("Editing state", EditState),
+                        new InspectorProperty("Difference", DifferenceSummary),
                     ]),
             ];
             if (SelectedRegion is not null)
@@ -442,6 +539,231 @@ public sealed class AeiDocumentViewModel :
         previous?.Dispose();
         ((AsyncRelayCommand)ExportAtlasCommand).RaiseCanExecuteChanged();
         ((AsyncRelayCommand)ExportSelectedRegionCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)ImportRegionCommand).RaiseCanExecuteChanged();
+    }
+
+    private async Task ImportRegionAsync()
+    {
+        if (SelectedRegion is null || originalImage is null)
+        {
+            return;
+        }
+
+        if (SelectedSurface is { ArrayElement: not 0 } or { Face: not 0 } or { MipLevel: not 0 })
+        {
+            throw new InvalidOperationException(
+                "Region editing is constrained to the primary atlas surface.");
+        }
+
+        string? path = await dialogs.PickAssetFileAsync("Import Replacement Region PNG", ".png");
+        if (path is null)
+        {
+            return;
+        }
+
+        RgbaImage replacement = await Task.Run(() => AvaloniaBitmapFactory.LoadRgba(path));
+        AeiEditSession session = EnsureEditSession(originalImage);
+        AeiRegion selected = SelectedRegion;
+        int overlapCount = AeiAtlasEditing.FindOverlaps(File.Regions).Count(
+            overlap => overlap.FirstRegionIndex == selected.Index
+                || overlap.SecondRegionIndex == selected.Index);
+        session.ReplaceRegion(selected.Index, replacement);
+        ShowOriginal = false;
+        SetImage(session.WorkingAtlas);
+        if (overlapCount > 0)
+        {
+            problems.Add(new ProblemEntry(
+                ProblemSeverity.Warning,
+                Asset.FileName,
+                Asset.FullPath,
+                File.Format.DisplayName,
+                $"Region {selected.Index} overlaps {overlapCount} other region(s).",
+                null,
+                "atlas region",
+                "Review the original/working comparison before staging."));
+        }
+
+        await AutosaveAsync();
+        output.Write(
+            OutputLevel.Information,
+            "Edit",
+            $"Region {selected.Index} replaced from {Path.GetFileName(path)}; original remains unchanged.");
+        RaiseEditStateChanged();
+    }
+
+    private AeiEditSession EnsureEditSession(RgbaImage original)
+    {
+        if (editSession is not null)
+        {
+            return editSession;
+        }
+
+        editSession = new AeiEditSession(
+            Asset.RelativePath.Replace('\\', '/'),
+            originalSourceHash,
+            Path.Combine("Assets", "Textures", Asset.RelativePath).Replace('\\', '/'),
+            File,
+            original);
+        editSession.Changed += OnEditSessionChanged;
+        RaiseEditStateChanged();
+        return editSession;
+    }
+
+    private void Undo()
+    {
+        editSession?.Undo();
+        RefreshWorkingImageAndAutosave();
+    }
+
+    private void Redo()
+    {
+        editSession?.Redo();
+        RefreshWorkingImageAndAutosave();
+    }
+
+    private void RevertWorking()
+    {
+        editSession?.Revert();
+        if (editSession is not null)
+        {
+            ShowOriginal = false;
+            SetImage(editSession.WorkingAtlas);
+            _ = DiscardRecoveryAsync();
+        }
+    }
+
+    private void RefreshWorkingImageAndAutosave()
+    {
+        if (editSession is null)
+        {
+            return;
+        }
+
+        ShowOriginal = false;
+        SetImage(editSession.WorkingAtlas);
+        _ = AutosaveAsync();
+    }
+
+    private async Task ValidateWorkingAsync()
+    {
+        if (editSession is null)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            AeiEncodingResult result = await Task.Run(() => editSession.Validate());
+            output.Write(
+                OutputLevel.Information,
+                "Validate",
+                $"{Asset.FileName}: reconstruction, reparse, and decode passed; " +
+                $"absolute error {result.AbsolutePixelError:N0}, max Δ {result.MaximumChannelError}.");
+        }
+        catch (Exception exception)
+        {
+            problems.Add(new ProblemEntry(
+                ProblemSeverity.Error,
+                Asset.FileName,
+                Asset.FullPath,
+                File.Format.DisplayName,
+                exception.Message,
+                null,
+                "AEI reconstruction",
+                "The working asset was not staged."));
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+            RaiseEditStateChanged();
+        }
+    }
+
+    private async Task StageWorkingAsync()
+    {
+        if (editSession?.LastValidation is not AeiEncodingResult validation
+            || editSession.ValidationState != EditValidationState.Valid)
+        {
+            throw new InvalidOperationException("Validate the working AEI before staging.");
+        }
+
+        string modRoot = workspaceService.ResolveModPath(workspace, workspace.ModRoot);
+        string validatedRoot = Path.Combine(modRoot, ".work", "validated");
+        Directory.CreateDirectory(validatedRoot);
+        string candidate = Path.Combine(validatedRoot, $"{Guid.NewGuid():N}.aei");
+        new AeiWriter().Write(File, candidate, validation.Payload);
+        try
+        {
+            ModStagingResult staged = await new ModStagingService().StageReplacementAsync(
+                workspace,
+                Asset,
+                candidate,
+                overwrite: true);
+            output.Write(
+                OutputLevel.Information,
+                "Changes",
+                $"Validated AEI staged at {Path.GetRelativePath(modRoot, staged.StagedPath)}.");
+            await AutosaveAsync();
+        }
+        finally
+        {
+            if (System.IO.File.Exists(candidate))
+            {
+                System.IO.File.Delete(candidate);
+            }
+        }
+    }
+
+    private async Task AutosaveAsync()
+    {
+        if (editSession is null || workspace.FilePath is null)
+        {
+            return;
+        }
+
+        string modRoot = workspaceService.ResolveModPath(workspace, workspace.ModRoot);
+        await recoveryService.SaveAsync(modRoot, editSession);
+    }
+
+    private async Task DiscardRecoveryAsync()
+    {
+        if (editSession is null || workspace.FilePath is null)
+        {
+            return;
+        }
+
+        string modRoot = workspaceService.ResolveModPath(workspace, workspace.ModRoot);
+        await recoveryService.DiscardAsync(modRoot, editSession.SourceGameRelativePath);
+    }
+
+    private void OnEditSessionChanged(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            RaiseEditStateChanged();
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(RaiseEditStateChanged);
+        }
+    }
+
+    private void RaiseEditStateChanged()
+    {
+        OnPropertyChanged(nameof(HasEditSession));
+        OnPropertyChanged(nameof(IsDirty));
+        OnPropertyChanged(nameof(EditState));
+        OnPropertyChanged(nameof(DifferenceSummary));
+        ((RelayCommand)UndoCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)RedoCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)ValidateWorkingCommand).RaiseCanExecuteChanged();
+        ((AsyncRelayCommand)StageWorkingCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)RevertWorkingCommand).RaiseCanExecuteChanged();
+        RaiseInspectorChanged();
     }
 
     private async Task ExportAtlasAsync()
@@ -530,7 +852,40 @@ public sealed class AeiDocumentViewModel :
         }
 
         path = PathPolicy.ValidateExportDestination(path, workspace.GameAssetRoot);
-        await Task.Run(() => new AeiWriter().Write(File, path));
+        byte[]? payload = null;
+        if (editSession?.IsDirty == true)
+        {
+            AeiEncodingResult validated = await Task.Run(() => editSession.Validate());
+            payload = validated.Payload;
+        }
+
+        string destinationPath = path;
+        string temporaryPath = destinationPath + $".tmp-{Guid.NewGuid():N}";
+        try
+        {
+            if (payload is null)
+            {
+                await Task.Run(() => new AeiWriter().Write(File, temporaryPath));
+            }
+            else
+            {
+                await Task.Run(
+                    () => new AeiWriter().Write(
+                        File,
+                        temporaryPath,
+                        new ReadOnlyMemory<byte>(payload)));
+            }
+
+            System.IO.File.Move(temporaryPath, destinationPath, overwrite: true);
+        }
+        finally
+        {
+            if (System.IO.File.Exists(temporaryPath))
+            {
+                System.IO.File.Delete(temporaryPath);
+            }
+        }
+
         output.Write(OutputLevel.Information, "Save Copy", $"AEI container written: {path}");
     }
 
@@ -549,6 +904,11 @@ public sealed class AeiDocumentViewModel :
         PreviewBitmap?.Dispose();
         PreviewBitmap = null;
         currentImage = null;
+        originalImage = null;
+        if (editSession is not null)
+        {
+            editSession.Changed -= OnEditSessionChanged;
+        }
     }
 }
 
@@ -560,6 +920,59 @@ public sealed record AemSubmeshOption(
     int Triangles,
     string Label);
 
+public sealed class AemMaterialAssignment : ObservableObject
+{
+    private AssetRelationshipResolution resolution;
+    private SceneTextureBinding? binding;
+
+    public AemMaterialAssignment(
+        int primitiveIndex,
+        string primitiveName,
+        AssetRelationshipResolution resolution,
+        SceneTextureBinding? binding)
+    {
+        PrimitiveIndex = primitiveIndex;
+        PrimitiveName = primitiveName;
+        this.resolution = resolution;
+        this.binding = binding;
+    }
+
+    public int PrimitiveIndex { get; }
+
+    public string PrimitiveName { get; }
+
+    public AssetRelationshipResolution Resolution => resolution;
+
+    public SceneTextureBinding? Binding => binding;
+
+    public string TextureName =>
+        resolution.SelectedAsset?.FileName ?? "Unassigned";
+
+    public string Confidence => resolution.Confidence.ToString();
+
+    public string Source => resolution.Source.ToString();
+
+    public string Reason => resolution.Reason;
+
+    public string Label =>
+        $"{PrimitiveIndex:D2} · {TextureName} · {Confidence}";
+
+    public void Update(
+        AssetRelationshipResolution nextResolution,
+        SceneTextureBinding? nextBinding)
+    {
+        resolution = nextResolution;
+        binding = nextBinding;
+        OnPropertyChanged(nameof(Resolution));
+        OnPropertyChanged(nameof(Binding));
+        OnPropertyChanged(nameof(TextureName));
+        OnPropertyChanged(nameof(Confidence));
+        OnPropertyChanged(nameof(Source));
+        OnPropertyChanged(nameof(Reason));
+        OnPropertyChanged(nameof(Label));
+    }
+}
+
 public sealed class AemDocumentViewModel :
     DocumentViewModelBase,
     IExportableDocument
@@ -569,6 +982,9 @@ public sealed class AemDocumentViewModel :
     private readonly IOutputService output;
     private readonly IProblemService problems;
     private readonly WorkspaceDefinition workspace;
+    private readonly IAssetRelationshipService relationships;
+    private readonly IWorkspaceService workspaceService;
+    private readonly Dictionary<int, SceneTextureBinding> textureBindings = [];
     private CancellationTokenSource? renderCancellation;
     private WriteableBitmap? previewBitmap;
     private SceneCamera camera = new();
@@ -580,7 +996,15 @@ public sealed class AemDocumentViewModel :
     private bool showPivots = true;
     private bool showBounds = true;
     private bool showFaceWinding;
+    private bool backFaceCulling = true;
     private bool perspective = true;
+    private bool useSoftwareRenderer;
+    private SceneViewportMode viewportMode = SceneViewportMode.LitTextured;
+    private int? focusedPrimitiveIndex;
+    private SceneViewportRendererInfo? rendererInfo;
+    private SceneViewportFrameMetrics? frameMetrics;
+    private bool gpuFailureReported;
+    private int renderRevision;
     private bool isRendering;
     private string renderStatus = "Ready";
     private int viewportWidth = 1000;
@@ -599,7 +1023,10 @@ public sealed class AemDocumentViewModel :
         WorkspaceDefinition workspace,
         IUserDialogService dialogs,
         IOutputService output,
-        IProblemService problems)
+        IProblemService problems,
+        IAssetRelationshipService relationships,
+        IWorkspaceService workspaceService,
+        IReadOnlyList<AemMaterialAssignment> materialAssignments)
         : base(
             DocumentManager.NormalizeDocumentId(asset.FullPath),
             asset.FileName,
@@ -614,6 +1041,16 @@ public sealed class AemDocumentViewModel :
         this.dialogs = dialogs;
         this.output = output;
         this.problems = problems;
+        this.relationships = relationships;
+        this.workspaceService = workspaceService;
+        MaterialAssignments = materialAssignments;
+        foreach (AemMaterialAssignment assignment in materialAssignments)
+        {
+            if (assignment.Binding is not null)
+            {
+                textureBindings[assignment.PrimitiveIndex] = assignment.Binding;
+            }
+        }
         Submeshes = scene.Primitives.Select(
             (primitive, index) => new AemSubmeshOption(
                 index,
@@ -628,7 +1065,13 @@ public sealed class AemDocumentViewModel :
         SetPreview(initialPreview);
 
         FrameAllCommand = new RelayCommand(FrameAll);
+        FrameSelectedCommand = new RelayCommand(
+            FrameSelected,
+            () => SelectedSubmesh is not null);
         ResetCameraCommand = new RelayCommand(ResetCamera);
+        AssignMaterialCommand = new AsyncRelayCommand(AssignMaterialAsync);
+        ClearMaterialCommand = new AsyncRelayCommand(ClearMaterialAsync);
+        ResetMaterialCommand = new AsyncRelayCommand(ResetMaterialAsync);
         ExportGltfCommand = new AsyncRelayCommand(ExportGltfAsync);
         ExportObjCommand = new AsyncRelayCommand(ExportObjAsync);
         SaveAemCopyCommand = new AsyncRelayCommand(SaveAemCopyAsync);
@@ -654,6 +1097,14 @@ public sealed class AemDocumentViewModel :
     public WindingStatistics Winding { get; }
 
     public IReadOnlyList<AemSubmeshOption> Submeshes { get; }
+
+    public IReadOnlyList<AemMaterialAssignment> MaterialAssignments { get; }
+
+    public AemMaterialAssignment? SelectedMaterialAssignment =>
+        SelectedSubmesh is null
+            ? null
+            : MaterialAssignments.FirstOrDefault(
+                value => value.PrimitiveIndex == SelectedSubmesh.Index);
 
     public int VertexCount => Scene.Primitives.Sum(primitive => primitive.Positions.Length);
 
@@ -713,6 +1164,75 @@ public sealed class AemDocumentViewModel :
 
     public string ViewportSizeLabel => $"{viewportWidth}×{viewportHeight}";
 
+    public string CameraStatus => string.Create(
+        CultureInfo.InvariantCulture,
+        $"Yaw {camera.Yaw * 180 / MathF.PI:F0}° · Pitch {camera.Pitch * 180 / MathF.PI:F0}° · Zoom {camera.Zoom:F2}");
+
+    public IReadOnlyList<SceneViewportMode> ViewportModes { get; } =
+        Enum.GetValues<SceneViewportMode>();
+
+    public SceneViewportMode ViewportMode
+    {
+        get => viewportMode;
+        set
+        {
+            if (SetProperty(ref viewportMode, value))
+            {
+                ShowFaceWinding = value == SceneViewportMode.Winding;
+                RequestRender();
+                RaiseInspectorChanged();
+            }
+        }
+    }
+
+    public bool BackFaceCulling
+    {
+        get => backFaceCulling;
+        set
+        {
+            if (SetProperty(ref backFaceCulling, value))
+            {
+                RequestRender();
+            }
+        }
+    }
+
+    public bool UseSoftwareRenderer
+    {
+        get => useSoftwareRenderer;
+        set
+        {
+            if (SetProperty(ref useSoftwareRenderer, value))
+            {
+                OnPropertyChanged(nameof(UseOpenGlRenderer));
+                if (value)
+                {
+                    RenderStatus = "Software fallback active";
+                    RequestRender();
+                }
+                else
+                {
+                    RenderStatus = rendererInfo is null
+                        ? "Initializing OpenGL…"
+                        : $"{rendererInfo.Name} · {rendererInfo.Device}";
+                    OnPropertyChanged(nameof(RenderRevision));
+                }
+
+                RaiseInspectorChanged();
+            }
+        }
+    }
+
+    public bool UseOpenGlRenderer => !UseSoftwareRenderer;
+
+    public int RenderRevision => renderRevision;
+
+    public SceneCamera Camera => camera;
+
+    public SceneViewportRendererInfo? RendererInfo => rendererInfo;
+
+    public SceneViewportFrameMetrics? FrameMetrics => frameMetrics;
+
     public WriteableBitmap? PreviewBitmap
     {
         get => previewBitmap;
@@ -726,6 +1246,8 @@ public sealed class AemDocumentViewModel :
         {
             if (SetProperty(ref selectedSubmesh, value))
             {
+                FrameSelectedCommand.RaiseCanExecuteChanged();
+                OnPropertyChanged(nameof(SelectedMaterialAssignment));
                 RaiseInspectorChanged();
                 if (IsolateSubmesh)
                 {
@@ -846,7 +1368,15 @@ public sealed class AemDocumentViewModel :
 
     public System.Windows.Input.ICommand FrameAllCommand { get; }
 
+    public RelayCommand FrameSelectedCommand { get; }
+
     public System.Windows.Input.ICommand ResetCameraCommand { get; }
+
+    public System.Windows.Input.ICommand AssignMaterialCommand { get; }
+
+    public System.Windows.Input.ICommand ClearMaterialCommand { get; }
+
+    public System.Windows.Input.ICommand ResetMaterialCommand { get; }
 
     public System.Windows.Input.ICommand ExportGltfCommand { get; }
 
@@ -887,6 +1417,22 @@ public sealed class AemDocumentViewModel :
                                 ? "No transform clip"
                                 : "glTF transform animation enabled"),
                     ]),
+                new(
+                    "Material",
+                    [
+                        new InspectorProperty(
+                            "Texture",
+                            SelectedMaterialAssignment?.TextureName ?? "Unassigned"),
+                        new InspectorProperty(
+                            "Confidence",
+                            SelectedMaterialAssignment?.Confidence ?? "None"),
+                        new InspectorProperty(
+                            "Relationship source",
+                            SelectedMaterialAssignment?.Source ?? "Unresolved"),
+                        new InspectorProperty(
+                            "Reason",
+                            SelectedMaterialAssignment?.Reason ?? "No material selected"),
+                    ]),
             ];
             if (SelectedSubmesh is not null)
             {
@@ -914,6 +1460,20 @@ public sealed class AemDocumentViewModel :
                         new InspectorProperty("Unknown trailing bytes", File.UnknownTrailingData.Length.ToString(CultureInfo.InvariantCulture)),
                         new InspectorProperty("Parser warnings", File.Diagnostics.Count.ToString(CultureInfo.InvariantCulture)),
                         new InspectorProperty("Viewport buffer", ViewportSizeLabel),
+                        new InspectorProperty(
+                            "Renderer",
+                            UseSoftwareRenderer
+                                ? "Software fallback"
+                                : rendererInfo?.Name ?? "OpenGL initializing"),
+                        new InspectorProperty(
+                            "GPU",
+                            rendererInfo?.Device ?? "Not available"),
+                        new InspectorProperty(
+                            "Frame",
+                            frameMetrics is null
+                                ? "Not measured"
+                                : $"{frameMetrics.FrameMilliseconds:N2} ms · " +
+                                  $"{frameMetrics.DrawCalls} draws"),
                     ],
                     IsAdvanced: true));
             return groups;
@@ -948,6 +1508,7 @@ public sealed class AemDocumentViewModel :
             Yaw = camera.Yaw + (float)(deltaX * 0.01),
             Pitch = Math.Clamp(camera.Pitch + (float)(deltaY * 0.01), -1.5f, 1.5f),
         };
+        OnPropertyChanged(nameof(CameraStatus));
         RequestRender();
     }
 
@@ -963,6 +1524,7 @@ public sealed class AemDocumentViewModel :
             PanX = camera.PanX + (float)(deltaX / viewportWidth),
             PanY = camera.PanY + (float)(deltaY / viewportHeight),
         };
+        OnPropertyChanged(nameof(CameraStatus));
         RequestRender();
     }
 
@@ -975,19 +1537,298 @@ public sealed class AemDocumentViewModel :
                 0.05f,
                 40f),
         };
+        OnPropertyChanged(nameof(CameraStatus));
         RequestRender();
     }
 
     public void FrameAll()
     {
+        focusedPrimitiveIndex = null;
         camera = camera with { PanX = 0, PanY = 0, Zoom = 1 };
+        OnPropertyChanged(nameof(CameraStatus));
+        RequestRender();
+    }
+
+    public void FrameSelected()
+    {
+        if (SelectedSubmesh is null)
+        {
+            return;
+        }
+
+        focusedPrimitiveIndex = SelectedSubmesh.Index;
+        camera = camera with { PanX = 0, PanY = 0, Zoom = 1 };
+        OnPropertyChanged(nameof(CameraStatus));
         RequestRender();
     }
 
     public void ResetCamera()
     {
+        focusedPrimitiveIndex = null;
         camera = new SceneCamera(Perspective: Perspective);
+        OnPropertyChanged(nameof(CameraStatus));
         RequestRender();
+    }
+
+    public SceneViewportRequest CreateViewportRequest()
+    {
+        return new SceneViewportRequest(
+            Scene,
+            camera,
+            ViewportMode,
+            Wireframe,
+            ShowNormals,
+            ShowPivots,
+            ShowBounds,
+            BackFaceCulling,
+            SelectedSubmesh?.Index,
+            focusedPrimitiveIndex,
+            IsolateSubmesh ? SelectedSubmesh?.Index : null,
+            Scene.Animations.Count == 0 ? null : AnimationTimeSeconds,
+            textureBindings,
+            new System.Numerics.Vector4(0.045f, 0.058f, 0.078f, 1));
+    }
+
+    private async Task AssignMaterialAsync()
+    {
+        AemMaterialAssignment? assignment = SelectedMaterialAssignment;
+        if (assignment is null)
+        {
+            return;
+        }
+
+        string? path = await dialogs.PickAssetFileAsync(
+            "Assign AEI Texture",
+            ".aei");
+        if (path is null)
+        {
+            return;
+        }
+
+        try
+        {
+            FileInfo info = new(path);
+            string fullPath = info.FullName;
+            string relativePath = !string.IsNullOrWhiteSpace(workspace.GameAssetRoot) &&
+                PathPolicy.IsWithin(fullPath, workspace.GameAssetRoot)
+                    ? Path.GetRelativePath(workspace.GameAssetRoot, fullPath)
+                    : info.Name;
+            AssetOwnership ownership = !string.IsNullOrWhiteSpace(workspace.GameAssetRoot) &&
+                PathPolicy.IsWithin(fullPath, workspace.GameAssetRoot)
+                    ? AssetOwnership.Game
+                    : AssetOwnership.Mod;
+            IndexedAsset texture = new(
+                fullPath,
+                relativePath,
+                info.Name,
+                AssetKind.Aei,
+                ownership,
+                info.Length,
+                info.LastWriteTimeUtc,
+                "Manual AEI material",
+                null,
+                AssetSupport.Supported,
+                true,
+                null);
+            SceneTextureBinding binding = await AemEditorProvider.DecodeTextureAsync(
+                texture,
+                workspace,
+                CancellationToken.None);
+            relationships.SetMaterialOverride(
+                workspace,
+                Asset,
+                assignment.PrimitiveIndex,
+                texture);
+            AssetRelationshipCandidate candidate = new(
+                texture,
+                AssetRelationshipSource.WorkspaceOverride,
+                AssetRelationshipConfidence.Confirmed,
+                "Workspace-level manual material assignment.",
+                10_000);
+            AssetRelationshipResolution resolution = new(
+                Asset,
+                assignment.PrimitiveIndex,
+                candidate.Source,
+                candidate.Confidence,
+                texture,
+                [candidate],
+                candidate.Reason,
+                []);
+            assignment.Update(resolution, binding);
+            textureBindings[assignment.PrimitiveIndex] = binding;
+            await workspaceService.SaveAsync(workspace);
+            NotifyMaterialChanged(assignment, "assigned");
+        }
+        catch (Exception exception) when (
+            exception is IOException or InvalidDataException or
+                Gof2Workshop.Binary.FormatParseException)
+        {
+            problems.Add(new ProblemEntry(
+                ProblemSeverity.Error,
+                Asset.FileName,
+                Asset.FullPath,
+                "AEM material",
+                exception.Message,
+                null,
+                "manual material assignment",
+                "Choose a valid, decodable AEI texture."));
+            output.Write(OutputLevel.Error, "Materials", exception.Message);
+        }
+    }
+
+    private async Task ClearMaterialAsync()
+    {
+        AemMaterialAssignment? assignment = SelectedMaterialAssignment;
+        if (assignment is null)
+        {
+            return;
+        }
+
+        relationships.DisableMaterial(
+            workspace,
+            Asset,
+            assignment.PrimitiveIndex);
+        AssetRelationshipResolution resolution = relationships.ResolveMaterial(
+            workspace,
+            Asset,
+            assignment.PrimitiveIndex);
+        assignment.Update(resolution, null);
+        textureBindings.Remove(assignment.PrimitiveIndex);
+        await workspaceService.SaveAsync(workspace);
+        NotifyMaterialChanged(assignment, "cleared");
+    }
+
+    private async Task ResetMaterialAsync()
+    {
+        AemMaterialAssignment? assignment = SelectedMaterialAssignment;
+        if (assignment is null)
+        {
+            return;
+        }
+
+        relationships.ClearMaterialOverride(
+            workspace,
+            Asset,
+            assignment.PrimitiveIndex);
+        AssetRelationshipResolution resolution = relationships.ResolveMaterial(
+            workspace,
+            Asset,
+            assignment.PrimitiveIndex);
+        SceneTextureBinding? binding = resolution.SelectedAsset is null
+            ? null
+            : await AemEditorProvider.DecodeTextureAsync(
+                resolution.SelectedAsset,
+                workspace,
+                CancellationToken.None);
+        assignment.Update(resolution, binding);
+        if (binding is null)
+        {
+            textureBindings.Remove(assignment.PrimitiveIndex);
+        }
+        else
+        {
+            textureBindings[assignment.PrimitiveIndex] = binding;
+        }
+
+        await workspaceService.SaveAsync(workspace);
+        NotifyMaterialChanged(assignment, "reset to automatic resolution");
+    }
+
+    private void NotifyMaterialChanged(
+        AemMaterialAssignment assignment,
+        string action)
+    {
+        OnPropertyChanged(nameof(SelectedMaterialAssignment));
+        RaiseInspectorChanged();
+        RequestRender();
+        output.Write(
+            OutputLevel.Information,
+            "Materials",
+            $"Material for {Asset.FileName} primitive {assignment.PrimitiveIndex} {action}: " +
+            $"{assignment.TextureName} ({assignment.Confidence}).");
+    }
+
+    public void PickSubmesh(
+        double x,
+        double y,
+        double viewportWidth,
+        double viewportHeight)
+    {
+        int? picked = SceneViewportPicking.PickPrimitive(
+            CreateViewportRequest(),
+            x,
+            y,
+            viewportWidth,
+            viewportHeight);
+        SelectedSubmesh = picked is int index && index >= 0 && index < Submeshes.Count
+            ? Submeshes[index]
+            : null;
+    }
+
+    public void ReportGpuRendererReady(SceneViewportRendererInfo info)
+    {
+        rendererInfo = info;
+        gpuFailureReported = false;
+        OnPropertyChanged(nameof(RendererInfo));
+        if (!UseSoftwareRenderer)
+        {
+            RenderStatus = $"{info.Name} · {info.ApiVersion} · {info.Device}";
+        }
+
+        output.Write(
+            OutputLevel.Information,
+            "Renderer",
+            $"OpenGL initialized: {info.ApiVersion}; {info.Vendor}; {info.Device}; " +
+            $"max texture {info.MaximumTextureSize:N0}.");
+        RaiseInspectorChanged();
+    }
+
+    public void ReportGpuFrame(
+        SceneViewportFrameMetrics metrics,
+        int width,
+        int height)
+    {
+        frameMetrics = metrics;
+        viewportWidth = width;
+        viewportHeight = height;
+        OnPropertyChanged(nameof(FrameMetrics));
+        OnPropertyChanged(nameof(ViewportSizeLabel));
+        if (!UseSoftwareRenderer)
+        {
+            RenderStatus = $"OpenGL · {metrics.FrameMilliseconds:N2} ms · " +
+                $"{metrics.DrawCalls} draws · {metrics.TriangleCount:N0} triangles";
+        }
+    }
+
+    public void ReportGpuRendererFailure(string reason)
+    {
+        if (!gpuFailureReported)
+        {
+            gpuFailureReported = true;
+            output.Write(
+                OutputLevel.Warning,
+                "Renderer",
+                $"OpenGL unavailable for {Asset.FileName}: {reason}. Using software fallback.");
+            problems.Add(new ProblemEntry(
+                ProblemSeverity.Warning,
+                Asset.FileName,
+                Asset.FullPath,
+                $"AEM v{(int)File.Version}",
+                $"Realtime OpenGL viewport unavailable: {reason}",
+                null,
+                "OpenGL viewport",
+                "Update the graphics driver or continue with the software fallback."));
+        }
+
+        UseSoftwareRenderer = true;
+    }
+
+    public void ReportGpuRendererReleased()
+    {
+        rendererInfo = null;
+        frameMetrics = null;
+        OnPropertyChanged(nameof(RendererInfo));
+        OnPropertyChanged(nameof(FrameMetrics));
     }
 
     public void ResizeViewport(double logicalWidth, double logicalHeight, double renderScaling)
@@ -1071,7 +1912,12 @@ public sealed class AemDocumentViewModel :
 
     private void RequestRender()
     {
-        _ = RenderAsync();
+        renderRevision++;
+        OnPropertyChanged(nameof(RenderRevision));
+        if (UseSoftwareRenderer)
+        {
+            _ = RenderAsync();
+        }
     }
 
     private async Task RenderAsync()
@@ -1154,14 +2000,43 @@ public sealed class AemDocumentViewModel :
         }
 
         GltfExportResult result = await Task.Run(
-            () => new GltfExporter().Export(
+            () => new GltfExporter().ExportWithMaterials(
                 Scene,
                 directory,
-                Path.GetFileNameWithoutExtension(Title)));
+                Path.GetFileNameWithoutExtension(Title),
+                MaterialAssignments
+                    .Where(assignment =>
+                        assignment.Binding is not null &&
+                        assignment.Binding.MipImages.Count > 0)
+                    .Select(assignment => new GltfTextureAssignment(
+                        assignment.PrimitiveIndex,
+                        assignment.Binding!.CacheKey,
+                        assignment.Binding.DisplayName,
+                        assignment.Binding.MipImages[0],
+                        assignment.Binding.HasAlpha))
+                    .ToArray()));
+        string dependencyPath = Path.Combine(
+            directory,
+            Path.GetFileNameWithoutExtension(Title) + ".dependencies.json");
+        await System.IO.File.WriteAllTextAsync(
+            dependencyPath,
+            JsonSerializer.Serialize(
+                MaterialAssignments.Select(assignment => new
+                {
+                    assignment.PrimitiveIndex,
+                    Texture = assignment.Resolution.SelectedAsset?.RelativePath,
+                    assignment.Confidence,
+                    assignment.Source,
+                    assignment.Reason,
+                    Resolved = assignment.Binding is not null,
+                }),
+                DetailsJsonOptions));
         output.Write(
             OutputLevel.Information,
             "Export",
-            $"glTF written: {result.GltfPath}. {result.AnimationStatus}");
+            $"glTF written: {result.GltfPath}; {result.TexturePaths?.Count ?? 0} texture(s); " +
+            $"{result.UnresolvedMaterialPrimitives?.Count ?? 0} unresolved material(s). " +
+            result.AnimationStatus);
     }
 
     private async Task ExportObjAsync()

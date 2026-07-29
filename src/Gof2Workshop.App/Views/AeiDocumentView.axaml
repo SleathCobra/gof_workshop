@@ -2,7 +2,9 @@
     x:Class="Gof2Workshop.App.Views.AeiDocumentView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:views="using:Gof2Workshop.App.Views">
+    xmlns:views="using:Gof2Workshop.App.Views"
+    AutomationProperties.AutomationId="ActiveAeiDocument"
+    AutomationProperties.Name="{Binding Asset.FileName}">
   <Grid RowDefinitions="Auto,*">
     <Border Padding="7,5" BorderThickness="0,0,0,1"
             BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
@@ -14,6 +16,17 @@
         <ToggleButton IsChecked="{Binding ShowCheckerboard}" Content="Checker" />
         <ToggleButton IsChecked="{Binding ShowRegions}" Content="Regions" />
         <ToggleButton IsChecked="{Binding ShowLabels}" Content="Labels" />
+        <Separator />
+        <Button Command="{Binding ImportRegionCommand}" Content="Import Region…" />
+        <Button Command="{Binding UndoCommand}" ToolTip.Tip="Undo the last texture operation" Content="Undo" />
+        <Button Command="{Binding RedoCommand}" ToolTip.Tip="Redo the next texture operation" Content="Redo" />
+        <ToggleButton IsChecked="{Binding ShowOriginal}" IsVisible="{Binding HasEditSession}"
+                      ToolTip.Tip="Toggle the immutable source and derived working atlas"
+                      Content="Original" />
+        <Button Command="{Binding ValidateWorkingCommand}" Content="Validate" />
+        <Button Command="{Binding StageWorkingCommand}" Content="Stage" />
+        <Button Command="{Binding RevertWorkingCommand}" Content="Revert" />
+        <Separator />
         <Button Command="{Binding ExportAtlasCommand}" Content="Export PNG" />
         <Button Command="{Binding ExportSelectedRegionCommand}" Content="Export Region" />
         <Button Command="{Binding SaveAeiCopyCommand}"
@@ -22,7 +35,7 @@
         <TextBlock Margin="10,0" VerticalAlignment="Center" Opacity="0.7"
                    Text="{Binding DecodeStatus}" TextTrimming="CharacterEllipsis" />
         <TextBlock VerticalAlignment="Center" Foreground="#64B5F6"
-                   FontSize="10" FontWeight="SemiBold" Text="{Binding OwnershipLabel}" />
+                   FontSize="10" FontWeight="SemiBold" Text="{Binding EditState}" />
         </StackPanel>
       </ScrollViewer>
     </Border>
@@ -37,11 +50,19 @@
                      VerticalAlignment="Bottom" Height="3" />
       </Grid>
       <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="#343B46" />
-      <Grid Grid.Column="2" RowDefinitions="Auto,Auto,*">
+      <Grid Grid.Column="2" RowDefinitions="Auto,Auto,Auto,*">
         <TextBlock Classes="section" Text="SURFACE / MIP / FACE" />
         <ComboBox Grid.Row="1" Margin="8,0,8,8" ItemsSource="{Binding Surfaces}"
                   SelectedItem="{Binding SelectedSurface}" DisplayMemberBinding="{Binding Label}" />
-        <Grid Grid.Row="2" RowDefinitions="Auto,*">
+        <Border Grid.Row="2" Margin="8,0,8,8" Padding="7" Background="#182A3B"
+                IsVisible="{Binding HasEditSession}">
+          <StackPanel Spacing="3">
+            <TextBlock FontWeight="SemiBold" Text="{Binding EditState}" />
+            <TextBlock FontSize="10" Opacity="0.75" TextWrapping="Wrap"
+                       Text="{Binding DifferenceSummary}" />
+          </StackPanel>
+        </Border>
+        <Grid Grid.Row="3" RowDefinitions="Auto,*">
           <TextBlock Classes="section" Text="ATLAS REGIONS" />
           <ListBox Grid.Row="1" Margin="4" ItemsSource="{Binding Regions}"
                    SelectedItem="{Binding SelectedRegion}">

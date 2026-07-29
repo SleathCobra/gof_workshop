@@ -1,0 +1,10 @@
+{
+  "formatVersion": 1,
+  "sourceGameRelativePath": "Textures/synthetic_raw.aei",
+  "originalSourceSha256": "b4a55cf78a8833ae8c2ad67fba57ee6f0e2b45418092f8a12164e66d7c3b8164",
+  "operation": "replace-region",
+  "regionIndex": 0,
+  "width": 8,
+  "height": 8,
+  "note": "Demonstration metadata only; replacement pixels are intentionally omitted."
+}

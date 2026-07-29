@@ -54,4 +54,12 @@ Dimensions, region tables, payload lengths, symbol counts, offsets, and allocati
 
 Raw and BC1/2/3 decoders are independent Workshop implementations. PVRTC/ETC/ATC are dispatched through a bounded adapter to the managed MIT-licensed `AssetRipper.TextureDecoder`; container traversal, mip/face selection, payload length validation, cancellation, and RGBA ownership remain in the Workshop.
 
-`AeiWriter` reconstructs the preserved container and can accept an explicitly supplied same-length encoded payload. This supports safe byte-faithful copies and codec-aware payload replacement without mutating the parsed snapshot. Arbitrary PNG-to-compressed encoding and per-region re-encoding are intentionally not claimed yet.
+`AeiWriter` reconstructs the preserved container and can accept an explicitly supplied same-length
+encoded payload. `IAeiPixelEncoder` now produces raw RGBA or BC1/BC2/BC3 blocks, regenerates the
+existing primary mip chain with a bounded box filter, and leaves unrelated faces/array elements
+untouched. The editor constrains PNG region imports to matching dimensions and never changes the
+atlas rectangle table, ordering, symbol maps, codec, face order, or unknown trailing data.
+
+After encoding, the Workshop writes to memory, reparses the complete AEI, decodes mip zero, checks
+dimensions and surface layout, and calculates absolute/maximum channel error. Staging stays disabled
+unless that validation succeeds. PVRTC/ETC/ATC encoding and atlas-layout resizing remain unsupported.

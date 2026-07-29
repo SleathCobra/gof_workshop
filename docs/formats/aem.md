@@ -54,7 +54,7 @@ Translation, rotation, and scale each begin with a u16 storage selector:
 
 Next is a signed v4 special marker. Marker `2` is followed by a scalar curve. V5 then stores a UV-animation marker; a nonzero value introduces seven scalar curves for UV offset X/Y, scale X/Y, two unresolved channels, and rotation Z. A signed 16-bit padding value ends the record.
 
-Curves and raw animation bytes are preserved. Transform key times are interpreted as milliseconds and converted to seconds. Translation and scale interpolate linearly; Euler-radian rotations are converted to quaternions and interpolate with slerp. The software viewer plays these transform tracks, and glTF writes translation/rotation/scale samplers and channels. UV animation and special/unresolved channels remain preserved but are not played or exported.
+Curves and raw animation bytes are preserved. Transform key times are interpreted as milliseconds and converted to seconds. Translation and scale interpolate linearly; Euler-radian rotations are converted to quaternions and interpolate with slerp. The OpenGL and software viewers play these transform tracks, and glTF writes translation/rotation/scale samplers and channels. UV animation and special/unresolved channels remain preserved but are not played or exported.
 
 ## Scene normalization
 
@@ -62,6 +62,10 @@ Curves and raw animation bytes are preserved. Transform key times are interprete
 - UVs in the scene/export layer become `(u, 1-v)` for PNG/glTF-oriented display; raw UVs remain in the AEM model.
 - The current scene convention retains source XYZ and declares glTF Y-up. Geometry is localized around a submesh pivot in glTF and that pivot becomes the node translation, permitting non-destructive transform animation about the expected origin. Broader handedness/up-axis conversion remains deferred.
 - Face winding is not silently modified. Each scene conversion reports geometric-normal versus stored-normal alignment.
+- AEM does not currently expose a confirmed embedded texture-name field. Material bindings therefore
+  live in the parser-independent scene/workspace layer and record whether they came from an exact
+  mapping, naming convention, neighboring path, or explicit user override. Low-confidence candidates
+  are displayed but not selected silently.
 
 ## Safety
 

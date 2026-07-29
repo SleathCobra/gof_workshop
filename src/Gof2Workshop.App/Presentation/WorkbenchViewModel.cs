@@ -18,6 +18,8 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     private readonly UserDialogService dialogs;
     private readonly DocumentManager documentManager;
     private readonly ModStagingService modStagingService;
+    private readonly ModBuildService modBuildService;
+    private readonly AssetRelationshipService relationshipService;
     private readonly List<IndexedAsset> gameAssets = [];
     private readonly List<IndexedAsset> modAssets = [];
     private ApplicationState applicationState = new();
@@ -51,6 +53,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     private readonly List<string> documentHistory = [];
     private int documentHistoryIndex = -1;
     private bool navigatingDocumentHistory;
+    private IUndoableDocument? activeUndoableDocument;
 
     public WorkbenchViewModel(UserDialogService dialogs)
     {
@@ -65,10 +68,21 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         problemService = new ProblemService();
         outputService = new OutputService();
         modStagingService = new ModStagingService(workspaceService);
+        modBuildService = new ModBuildService(workspaceService);
+        relationshipService = new AssetRelationshipService();
 
         DocumentEditorRegistry registry = new();
-        registry.Register(new AeiEditorProvider(dialogs, outputService, problemService));
-        registry.Register(new AemEditorProvider(dialogs, outputService, problemService));
+        registry.Register(new AeiEditorProvider(
+            dialogs,
+            outputService,
+            problemService,
+            workspaceService));
+        registry.Register(new AemEditorProvider(
+            dialogs,
+            outputService,
+            problemService,
+            relationshipService,
+            workspaceService));
         registry.Register(new UnsupportedEditorProvider());
         documentManager = new DocumentManager(registry);
         documentManager.Changed += OnDocumentsChanged;
@@ -106,6 +120,12 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
             NavigateToNextDocument,
             () => documentHistoryIndex >= 0 &&
                 documentHistoryIndex < documentHistory.Count - 1);
+        UndoActiveDocumentCommand = new RelayCommand(
+            () => ExecuteActiveDocumentCommand(undo: true),
+            () => CanExecuteActiveDocumentCommand(undo: true));
+        RedoActiveDocumentCommand = new RelayCommand(
+            () => ExecuteActiveDocumentCommand(undo: false),
+            () => CanExecuteActiveDocumentCommand(undo: false));
         ExportCurrentCommand = new AsyncRelayCommand(
             ExportCurrentAsync,
             () => SelectedDocument is IExportableDocument);
@@ -118,6 +138,12 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         ReplaceInModCommand = new AsyncRelayCommand(
             ReplaceInModAsync,
             () => Workspace is not null && GetSelectedOriginalAsset() is not null);
+        ValidateModCommand = new AsyncRelayCommand(
+            ValidateModAsync,
+            () => Workspace is not null);
+        BuildModCommand = new AsyncRelayCommand(
+            BuildModAsync,
+            () => Workspace is not null);
         ShowExplorerCommand = new RelayCommand(() => ExplorerVisible = !ExplorerVisible);
         ShowInspectorCommand = new RelayCommand(() => InspectorVisible = !InspectorVisible);
         ShowBottomCommand = new RelayCommand(() => BottomVisible = !BottomVisible);
@@ -151,6 +177,10 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     public ObservableCollection<OutputEntry> OutputEntries { get; } = [];
 
     public ObservableCollection<InspectorGroup> InspectorGroups { get; } = [];
+
+    public ObservableCollection<ModManifestAsset> Changes { get; } = [];
+
+    public ObservableCollection<ModValidationIssue> ChangeIssues { get; } = [];
 
     public IReadOnlyList<AssetPlatformProfile> Profiles => ProfileCatalog.All;
 
@@ -207,6 +237,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref selectedDocument, value))
             {
+                AttachActiveUndoableDocument(value as IUndoableDocument);
                 if (!syncingDocuments)
                 {
                     documentManager.ActiveDocument = value;
@@ -328,7 +359,12 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
             {
                 OnPropertyChanged(nameof(IsExplorerActivity));
                 OnPropertyChanged(nameof(IsSearchActivity));
+                OnPropertyChanged(nameof(IsChangesActivity));
                 OnPropertyChanged(nameof(IsPlaceholderActivity));
+                if (value == "Changes")
+                {
+                    _ = RefreshChangesAsync();
+                }
             }
         }
     }
@@ -337,7 +373,10 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
 
     public bool IsSearchActivity => ActiveActivity == "Search";
 
-    public bool IsPlaceholderActivity => !IsExplorerActivity && !IsSearchActivity;
+    public bool IsChangesActivity => ActiveActivity == "Changes";
+
+    public bool IsPlaceholderActivity =>
+        !IsExplorerActivity && !IsSearchActivity && !IsChangesActivity;
 
     public string ActiveBottomTab
     {
@@ -467,6 +506,10 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
 
     public System.Windows.Input.ICommand NextDocumentCommand { get; }
 
+    public System.Windows.Input.ICommand UndoActiveDocumentCommand { get; }
+
+    public System.Windows.Input.ICommand RedoActiveDocumentCommand { get; }
+
     public System.Windows.Input.ICommand ExportCurrentCommand { get; }
 
     public System.Windows.Input.ICommand RevealCommand { get; }
@@ -474,6 +517,10 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     public System.Windows.Input.ICommand AddToModCommand { get; }
 
     public System.Windows.Input.ICommand ReplaceInModCommand { get; }
+
+    public System.Windows.Input.ICommand ValidateModCommand { get; }
+
+    public System.Windows.Input.ICommand BuildModCommand { get; }
 
     public System.Windows.Input.ICommand ShowExplorerCommand { get; }
 
@@ -805,6 +852,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
                 token);
             gameAssets.Clear();
             gameAssets.AddRange(result.Assets);
+            relationshipService.UpdateAssets(gameAssets.Concat(modAssets));
             problemService.AddRange(result.Problems);
             RebuildTree(GameAssetTree, gameAssets);
             RebuildFormats();
@@ -864,6 +912,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
             SelectedProfile);
         modAssets.Clear();
         modAssets.AddRange(result.Assets);
+        relationshipService.UpdateAssets(gameAssets.Concat(modAssets));
         RebuildTree(ModAssetTree, modAssets);
     }
 
@@ -1120,6 +1169,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
                     result.StagedPath)}");
             StatusMessage = $"{source.FileName} added to the mod workspace.";
             await ScanModAssetsAsync();
+            await RefreshChangesAsync();
         }
         catch (Exception exception) when (
             exception is IOException or InvalidDataException or InvalidOperationException)
@@ -1159,11 +1209,125 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
                     result.StagedPath)}");
             StatusMessage = $"{source.FileName} replacement staged; the original is unchanged.";
             await ScanModAssetsAsync();
+            await RefreshChangesAsync();
         }
         catch (Exception exception) when (
             exception is IOException or InvalidDataException or InvalidOperationException)
         {
             ReportStagingError(source, exception);
+        }
+    }
+
+    private void AttachActiveUndoableDocument(IUndoableDocument? document)
+    {
+        if (activeUndoableDocument is not null)
+        {
+            activeUndoableDocument.UndoCommand.CanExecuteChanged -= OnActiveUndoCommandStateChanged;
+            activeUndoableDocument.RedoCommand.CanExecuteChanged -= OnActiveUndoCommandStateChanged;
+        }
+
+        activeUndoableDocument = document;
+        if (activeUndoableDocument is not null)
+        {
+            activeUndoableDocument.UndoCommand.CanExecuteChanged += OnActiveUndoCommandStateChanged;
+            activeUndoableDocument.RedoCommand.CanExecuteChanged += OnActiveUndoCommandStateChanged;
+        }
+    }
+
+    private void OnActiveUndoCommandStateChanged(object? sender, EventArgs eventArgs)
+    {
+        ((RelayCommand)UndoActiveDocumentCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)RedoActiveDocumentCommand).RaiseCanExecuteChanged();
+    }
+
+    private async Task RefreshChangesAsync()
+    {
+        Changes.Clear();
+        ChangeIssues.Clear();
+        if (Workspace is null)
+        {
+            return;
+        }
+
+        try
+        {
+            ModValidationResult result = await modBuildService.ValidateAsync(Workspace);
+            foreach (ModManifestAsset asset in result.Assets)
+            {
+                Changes.Add(asset);
+            }
+
+            foreach (ModValidationIssue issue in result.Issues)
+            {
+                ChangeIssues.Add(issue);
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or InvalidDataException or InvalidOperationException)
+        {
+            outputService.Write(OutputLevel.Error, "Changes", exception.Message);
+        }
+    }
+
+    private async Task ValidateModAsync()
+    {
+        if (Workspace is null)
+        {
+            return;
+        }
+
+        ModValidationResult result = await modBuildService.ValidateAsync(Workspace);
+        await RefreshChangesAsync();
+        foreach (ModValidationIssue issue in result.Issues)
+        {
+            OutputLevel level = issue.Severity switch
+            {
+                ModValidationSeverity.Error => OutputLevel.Error,
+                ModValidationSeverity.Warning => OutputLevel.Warning,
+                _ => OutputLevel.Information,
+            };
+            outputService.Write(level, "Validate Mod", $"{issue.Target ?? "Mod"}: {issue.Message}");
+        }
+
+        StatusMessage = result.IsValid
+            ? $"Mod valid: {result.Assets.Count} replacement(s) ready."
+            : "Mod validation failed; review Changes and Problems.";
+        ActiveActivity = "Changes";
+    }
+
+    private async Task BuildModAsync()
+    {
+        if (Workspace is null)
+        {
+            return;
+        }
+
+        try
+        {
+            ModBuildResult result = await modBuildService.BuildAsync(Workspace);
+            outputService.Write(
+                OutputLevel.Information,
+                "Build Mod",
+                $"Deterministic build complete: {result.OutputDirectory} " +
+                $"({result.Report.Assets.Count} assets, content {result.Report.ContentSha256[..12]}…).");
+            StatusMessage = $"Mod built: {result.Report.Assets.Count} asset(s).";
+            dialogs.RevealInExplorer(result.OutputDirectory);
+            await RefreshChangesAsync();
+        }
+        catch (Exception exception) when (
+            exception is IOException or InvalidDataException or InvalidOperationException)
+        {
+            outputService.Write(OutputLevel.Error, "Build Mod", exception.Message);
+            problemService.Add(new ProblemEntry(
+                ProblemSeverity.Error,
+                Workspace.Name,
+                Workspace.FilePath,
+                "Mod build",
+                exception.Message,
+                null,
+                "manifest",
+                "Resolve validation errors before building."));
+            StatusMessage = "Mod build failed.";
         }
     }
 
@@ -1569,10 +1733,14 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
             CloseDocumentCommand,
             CloseOtherDocumentsCommand,
             CloseAllDocumentsCommand,
+            UndoActiveDocumentCommand,
+            RedoActiveDocumentCommand,
             ExportCurrentCommand,
             RevealCommand,
             AddToModCommand,
             ReplaceInModCommand,
+            ValidateModCommand,
+            BuildModCommand,
         })
         {
             switch (command)
@@ -1584,6 +1752,36 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
                     asyncRelay.RaiseCanExecuteChanged();
                     break;
             }
+        }
+    }
+
+    private bool CanExecuteActiveDocumentCommand(bool undo)
+    {
+        if (SelectedDocument is not IUndoableDocument document)
+        {
+            return false;
+        }
+
+        System.Windows.Input.ICommand command = undo
+            ? document.UndoCommand
+            : document.RedoCommand;
+        return command.CanExecute(null);
+    }
+
+    private void ExecuteActiveDocumentCommand(bool undo)
+    {
+        if (SelectedDocument is not IUndoableDocument document)
+        {
+            return;
+        }
+
+        System.Windows.Input.ICommand command = undo
+            ? document.UndoCommand
+            : document.RedoCommand;
+        if (command.CanExecute(null))
+        {
+            command.Execute(null);
+            RaiseCommandStates();
         }
     }
 
@@ -1623,6 +1821,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
 
         scanCancellation?.Cancel();
         scanCancellation?.Dispose();
+        AttachActiveUndoableDocument(null);
         documentManager.Changed -= OnDocumentsChanged;
         problemService.Changed -= OnProblemsChanged;
         outputService.Changed -= OnOutputChanged;

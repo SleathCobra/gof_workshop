@@ -16,6 +16,8 @@
     <KeyBinding Gesture="Ctrl+P" Command="{Binding SetActivityCommand}" CommandParameter="Search" />
     <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseDocumentCommand}" />
     <KeyBinding Gesture="Ctrl+Shift+W" Command="{Binding CloseAllDocumentsCommand}" />
+    <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoActiveDocumentCommand}" />
+    <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoActiveDocumentCommand}" />
     <KeyBinding Gesture="Ctrl+E" Command="{Binding ExportCurrentCommand}" />
     <KeyBinding Gesture="Alt+Left" Command="{Binding PreviousDocumentCommand}" />
     <KeyBinding Gesture="Alt+Right" Command="{Binding NextDocumentCommand}" />
@@ -35,6 +37,9 @@
         <MenuItem Header="E_xit" Click="OnExitClick" />
       </MenuItem>
       <MenuItem Header="_Edit">
+        <MenuItem Header="_Undo Asset Edit" InputGesture="Ctrl+Z" Command="{Binding UndoActiveDocumentCommand}" />
+        <MenuItem Header="_Redo Asset Edit" InputGesture="Ctrl+Y" Command="{Binding RedoActiveDocumentCommand}" />
+        <Separator />
         <MenuItem Header="Close _Document" InputGesture="Ctrl+W" Command="{Binding CloseDocumentCommand}" />
         <MenuItem Header="Close _Other Documents" Command="{Binding CloseOtherDocumentsCommand}" />
         <MenuItem Header="Close _All Documents" InputGesture="Ctrl+Shift+W" Command="{Binding CloseAllDocumentsCommand}" />
@@ -63,6 +68,9 @@
         <MenuItem Header="_Export Current Asset…" InputGesture="Ctrl+E" Command="{Binding ExportCurrentCommand}" />
       </MenuItem>
       <MenuItem Header="_Tools">
+        <MenuItem Header="_Validate Mod" Command="{Binding ValidateModCommand}" />
+        <MenuItem Header="_Build Mod" Command="{Binding BuildModCommand}" />
+        <Separator />
         <MenuItem Header="Open _Logs" Command="{Binding OpenLogsCommand}" />
         <MenuItem Header="_Settings" Command="{Binding SetActivityCommand}" CommandParameter="Settings" />
       </MenuItem>
@@ -93,16 +101,18 @@
     <Grid x:Name="MainGrid" Grid.Row="2" ColumnDefinitions="42,300,5,*,5,300">
       <Border Background="#171C23" BorderThickness="0,0,1,0"
               BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
-        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
           <Button Classes="rail" ToolTip.Tip="Explorer"
                   Command="{Binding SetActivityCommand}" CommandParameter="Explorer" Content="▱" />
           <Button Grid.Row="1" Classes="rail" ToolTip.Tip="Search (Ctrl+P)"
                   Command="{Binding SetActivityCommand}" CommandParameter="Search" Content="⌕" />
           <Button Grid.Row="2" Classes="rail" ToolTip.Tip="Problems"
                   Command="{Binding SetBottomTabCommand}" CommandParameter="Problems" Content="⚠" />
-          <Button Grid.Row="4" Classes="rail" ToolTip.Tip="Documentation / Research"
+          <Button Grid.Row="3" Classes="rail" ToolTip.Tip="Changes"
+                  Command="{Binding SetActivityCommand}" CommandParameter="Changes" Content="⇄" />
+          <Button Grid.Row="5" Classes="rail" ToolTip.Tip="Documentation / Research"
                   Command="{Binding SetActivityCommand}" CommandParameter="Documentation" Content="?" />
-          <Button Grid.Row="5" Classes="rail" ToolTip.Tip="Settings"
+          <Button Grid.Row="6" Classes="rail" ToolTip.Tip="Settings"
                   Command="{Binding SetActivityCommand}" CommandParameter="Settings" Content="⚙" />
         </Grid>
       </Border>

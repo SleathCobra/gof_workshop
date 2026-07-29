@@ -233,6 +233,27 @@ function Accept-NativeDialog {
         [IntPtr]::Zero)
 }
 
+function Set-NativeDialogFileName {
+    param(
+        [Windows.Automation.AutomationElement] $Dialog,
+        [string] $FileName
+    )
+
+    $condition = [Windows.Automation.PropertyCondition]::new(
+        [Windows.Automation.AutomationElement]::AutomationIdProperty,
+        '1148')
+    $fileNameControl = $Dialog.FindFirst(
+        [Windows.Automation.TreeScope]::Descendants,
+        $condition)
+    if ($null -eq $fileNameControl) {
+        return
+    }
+
+    $value = $fileNameControl.GetCurrentPattern(
+        [Windows.Automation.ValuePattern]::Pattern)
+    $value.SetValue($FileName)
+}
+
 $aemBaseName = [IO.Path]::GetFileNameWithoutExtension($aemPath)
 $gltfPath = Join-Path $outputRoot "$aemBaseName.gltf"
 $binPath = Join-Path $outputRoot "$aemBaseName.bin"
@@ -253,14 +274,22 @@ try {
     $aemProcess = Start-Workshop -Asset $aemPath
     $main = Get-MainAutomationElement -Process $aemProcess
     Wait-Until -FailureMessage 'AEM document did not become exportable.' -Condition {
-        $candidate = Find-NamedDescendant -Root $main -Name 'Export Current'
+        $active = Find-NamedDescendant -Root $main -Name ([IO.Path]::GetFileName($aemPath))
+        if ($null -eq $active) {
+            return $null
+        }
+
+        # Wait for the requested AEM document itself. The workbench becomes interactive while
+        # restored documents are still opening, so the global Export Current command can briefly
+        # belong to a different active tab.
+        $candidate = Find-NamedDescendant -Root $main -Name 'Export glTF'
         if ($null -ne $candidate -and $candidate.Current.IsEnabled) {
             return $candidate
         }
 
         return $null
     } | Out-Null
-    Invoke-NamedButton -Root $main -Name 'Export Current'
+    Invoke-NamedButton -Root $main -Name 'Export glTF'
     $dialog = Wait-ForDialog -Process $aemProcess -Title 'Export AEM as glTF 2.0'
     Accept-NativeDialog -Dialog $dialog
     Wait-Until -FailureMessage 'Native AEM export did not create glTF and BIN files.' -Condition {
@@ -270,6 +299,7 @@ try {
     $main = Get-MainAutomationElement -Process $aemProcess
     Invoke-NamedButton -Root $main -Name 'Save AEM Copy'
     $dialog = Wait-ForDialog -Process $aemProcess -Title 'Save Reconstructed AEM Copy'
+    Set-NativeDialogFileName -Dialog $dialog -FileName ([IO.Path]::GetFileName($aemCopyPath))
     Accept-NativeDialog -Dialog $dialog
     Wait-ForCompletedFile -Path $aemCopyPath `
         -FailureMessage 'Native AEM save-copy did not finish writing an AEM file.'
@@ -283,6 +313,11 @@ try {
     $aeiProcess = Start-Workshop -Asset $aeiPath
     $main = Get-MainAutomationElement -Process $aeiProcess
     Wait-Until -FailureMessage 'AEI document did not become exportable.' -Condition {
+        $active = Find-NamedDescendant -Root $main -Name ([IO.Path]::GetFileName($aeiPath))
+        if ($null -eq $active) {
+            return $null
+        }
+
         $candidate = Find-NamedDescendant -Root $main -Name 'Export PNG'
         if ($null -ne $candidate -and $candidate.Current.IsEnabled) {
             return $candidate
@@ -292,6 +327,7 @@ try {
     } | Out-Null
     Invoke-NamedButton -Root $main -Name 'Export PNG'
     $dialog = Wait-ForDialog -Process $aeiProcess -Title 'Export AEI Texture as PNG'
+    Set-NativeDialogFileName -Dialog $dialog -FileName ([IO.Path]::GetFileName($pngPath))
     Accept-NativeDialog -Dialog $dialog
     Wait-Until -FailureMessage 'Native AEI export did not create a PNG file.' -Condition {
         Test-Path -LiteralPath $pngPath -PathType Leaf
@@ -299,9 +335,21 @@ try {
     $main = Get-MainAutomationElement -Process $aeiProcess
     Invoke-NamedButton -Root $main -Name 'Save AEI Copy'
     $dialog = Wait-ForDialog -Process $aeiProcess -Title 'Save AEI Container Copy'
+    Set-NativeDialogFileName -Dialog $dialog -FileName ([IO.Path]::GetFileName($aeiCopyPath))
     Accept-NativeDialog -Dialog $dialog
-    Wait-ForCompletedFile -Path $aeiCopyPath `
-        -FailureMessage 'Native AEI save-copy did not finish writing an AEI file.'
+    try {
+        Wait-ForCompletedFile -Path $aeiCopyPath `
+            -FailureMessage 'Native AEI save-copy did not finish writing an AEI file.'
+    }
+    catch {
+        $main = Get-MainAutomationElement -Process $aeiProcess
+        $elements = $main.FindAll(
+            [Windows.Automation.TreeScope]::Descendants,
+            [Windows.Automation.Condition]::TrueCondition)
+        $visibleNames = @($elements | ForEach-Object { $_.Current.Name } | Where-Object { $_ })
+        Write-Warning ("Visible UI at failure: " + ($visibleNames -join ' | '))
+        throw
+    }
 }
 finally {
     Stop-Workshop -Process $aeiProcess
@@ -331,7 +379,7 @@ if ($aeiSourceHash -ne $aeiCopyHash) {
     OutputRoot = $outputRoot
     Gltf = $gltfPath
     GltfMeshes = @($gltf.meshes).Count
-    GltfAnimations = @($gltf.animations).Count
+    GltfAnimations = if ($null -eq $gltf.animations) { 0 } else { @($gltf.animations).Count }
     BinaryBytes = (Get-Item -LiteralPath $binPath).Length
     AemCopy = $aemCopyPath
     AemCopySha256 = $aemCopyHash

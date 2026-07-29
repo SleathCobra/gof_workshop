@@ -187,6 +187,94 @@ public sealed class AeiParserTests
         Assert.AreEqual(new Rgba32(0, 0, 255, 255), decoded.GetPixel(0, 0));
     }
 
+    [TestMethod]
+    public void RawEncoderReconstructsReparsesAndDecodesWorkingAtlas()
+    {
+        using MemoryStream source = new(CreateRawFixture(includeSymbol: false));
+        AeiFile file = new AeiParser().Parse(source, "raw-encode.aei");
+        RgbaImage working = new(2, 1);
+        working.SetPixel(0, 0, new Rgba32(20, 40, 60, 80));
+        working.SetPixel(1, 0, new Rgba32(100, 120, 140, 160));
+
+        AeiEncodingResult result = new AeiReconstructionService().ReconstructAndValidate(
+            file,
+            working);
+
+        Assert.AreEqual(AeiCompressionFormat.UncompressedUi, result.ReparsedFile.Format.Format);
+        Assert.AreEqual(0, result.AbsolutePixelError);
+        Assert.AreEqual((byte)0, result.MaximumChannelError);
+        Assert.AreEqual(new Rgba32(20, 40, 60, 80), result.DecodedAtlas.GetPixel(0, 0));
+        Assert.AreEqual(new Rgba32(100, 120, 140, 160), result.DecodedAtlas.GetPixel(1, 0));
+    }
+
+    [TestMethod]
+    [DataRow((byte)0x20)]
+    [DataRow((byte)0x21)]
+    [DataRow((byte)0x24)]
+    public void BcEncoderReconstructsAndReparsesPreservedContainer(byte formatId)
+    {
+        int payloadLength = formatId == 0x20 ? 8 : 16;
+        using MemoryStream source = new(
+            CreateCompressedFixture(formatId, 4, 4, new byte[payloadLength]));
+        AeiFile file = new AeiParser().Parse(source, "encode.aei");
+        RgbaImage working = new(4, 4);
+        for (int y = 0; y < 4; y++)
+        {
+            for (int x = 0; x < 4; x++)
+            {
+                working.SetPixel(x, y, new Rgba32(220, 40, 20, (byte)(64 + (x * 40))));
+            }
+        }
+
+        AeiEncodingResult result = new AeiReconstructionService().ReconstructAndValidate(
+            file,
+            working,
+            new AeiEncodingOptions(AeiEncodingQuality.Fast));
+
+        Assert.AreEqual(file.Format.Format, result.ReparsedFile.Format.Format);
+        Assert.AreEqual(file.Payload.Length, result.Payload.Length);
+        Assert.AreEqual(4, result.DecodedAtlas.Width);
+        Assert.AreEqual(4, result.DecodedAtlas.Height);
+        Assert.IsTrue(result.DecodedAtlas.GetPixel(0, 0).R > 150);
+        if (formatId != 0x20)
+        {
+            Assert.IsTrue(result.DecodedAtlas.GetPixel(0, 0).A < 150);
+        }
+    }
+
+    [TestMethod]
+    public void RegionReplacementIsImmutableAndReportsOverlapAndDifference()
+    {
+        RgbaImage original = new(4, 4);
+        AeiRegion region = new(0, 1, 1, 2, 2, 0);
+        RgbaImage replacement = new(2, 2);
+        replacement.PixelBytes.Fill(255);
+
+        RgbaImage working = AeiAtlasEditing.ReplaceRegion(original, region, replacement);
+        AeiPixelDifference difference = AeiAtlasEditing.Compare(original, working);
+        IReadOnlyList<AeiRegionOverlap> overlaps = AeiAtlasEditing.FindOverlaps(
+        [
+            region,
+            new AeiRegion(1, 2, 2, 2, 2, 0),
+            new AeiRegion(2, 3, 0, 1, 1, 0),
+        ]);
+
+        Assert.AreEqual(Rgba32.Transparent, original.GetPixel(1, 1));
+        Assert.AreEqual(new Rgba32(255, 255, 255, 255), working.GetPixel(1, 1));
+        Assert.AreEqual(4, difference.ChangedPixels);
+        Assert.AreEqual(4, difference.ChangedAlphaPixels);
+        Assert.HasCount(1, overlaps);
+    }
+
+    [TestMethod]
+    public void RegionReplacementRejectsDimensionMismatch()
+    {
+        RgbaImage original = new(4, 4);
+        AeiRegion region = new(0, 1, 1, 2, 2, 0);
+        Assert.Throws<InvalidDataException>(
+            () => AeiAtlasEditing.ReplaceRegion(original, region, new RgbaImage(1, 2)));
+    }
+
     private static byte[] CreateRawFixture(bool includeSymbol)
     {
         using MemoryStream stream = new();

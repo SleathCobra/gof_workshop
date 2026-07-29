@@ -2,7 +2,9 @@
     x:Class="Gof2Workshop.App.Views.AemDocumentView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:views="using:Gof2Workshop.App.Views">
+    xmlns:views="using:Gof2Workshop.App.Views"
+    AutomationProperties.AutomationId="ActiveAemDocument"
+    AutomationProperties.Name="{Binding Asset.FileName}">
   <Grid RowDefinitions="Auto,*">
     <Border Padding="7,5" BorderThickness="0,0,0,1"
             BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
@@ -10,14 +12,20 @@
                     VerticalScrollBarVisibility="Disabled">
         <StackPanel Orientation="Horizontal" Spacing="5">
         <Button Command="{Binding FrameAllCommand}" Content="Frame All" />
+        <Button Command="{Binding FrameSelectedCommand}" Content="Frame Selected" />
         <Button Command="{Binding ResetCameraCommand}" Content="Reset Camera" />
         <ToggleButton IsChecked="{Binding Perspective}" Content="Perspective" />
-        <ToggleButton IsChecked="{Binding Solid}" Content="Solid" />
+        <ComboBox Width="150" ItemsSource="{Binding ViewportModes}"
+                  SelectedItem="{Binding ViewportMode}" />
         <ToggleButton IsChecked="{Binding Wireframe}" Content="Wire" />
         <ToggleButton IsChecked="{Binding ShowNormals}" Content="Normals" />
         <ToggleButton IsChecked="{Binding ShowPivots}" Content="Pivots" />
         <ToggleButton IsChecked="{Binding ShowBounds}" Content="Bounds" />
         <ToggleButton IsChecked="{Binding ShowFaceWinding}" Content="Winding" />
+        <ToggleButton IsChecked="{Binding BackFaceCulling}" Content="Cull" />
+        <ToggleButton IsChecked="{Binding UseSoftwareRenderer}"
+                      ToolTip.Tip="Use the deterministic CPU renderer instead of OpenGL"
+                      Content="Software" />
         <Button Command="{Binding ExportGltfCommand}" Content="Export glTF" />
         <Button Command="{Binding ExportObjCommand}" Content="Export OBJ" />
         <Button Command="{Binding SaveAemCopyCommand}"
@@ -27,6 +35,7 @@
           <TextBlock VerticalAlignment="Center" Opacity="0.7"
                      MaxWidth="260" Text="{Binding RenderStatus}" TextTrimming="CharacterEllipsis" />
           <TextBlock VerticalAlignment="Center" Opacity="0.5" Text="{Binding ViewportSizeLabel}" />
+          <TextBlock VerticalAlignment="Center" Opacity="0.5" Text="{Binding CameraStatus}" />
         </StackPanel>
         <TextBlock VerticalAlignment="Center" Foreground="#64B5F6"
                    FontSize="10" FontWeight="SemiBold" Text="{Binding OwnershipLabel}" />
@@ -35,7 +44,16 @@
     </Border>
     <Grid Grid.Row="1" ColumnDefinitions="*,5,280">
       <Grid Background="#0E1218">
-        <views:AemViewportControl Document="{Binding}" />
+        <views:OpenGlAemViewportControl Document="{Binding}"
+                                        IsVisible="{Binding UseOpenGlRenderer}" />
+        <views:AemViewportControl Document="{Binding}"
+                                  IsVisible="{Binding UseSoftwareRenderer}" />
+        <Border x:Name="ViewportInputSurface"
+                Background="Transparent"
+                Focusable="True"
+                AutomationProperties.AutomationId="AemViewportInput"
+                AutomationProperties.Name="AEM viewport interaction surface"
+                ToolTip.Tip="Left drag to orbit · Right or middle drag to pan · Wheel to zoom" />
         <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10" Padding="8,5"
                 Background="#D0141A22" CornerRadius="3">
           <StackPanel>
@@ -56,14 +74,34 @@
                      VerticalAlignment="Bottom" Height="3" />
       </Grid>
       <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="#343B46" />
-      <Grid Grid.Column="2" RowDefinitions="Auto,Auto,Auto,*">
+      <Grid Grid.Column="2" RowDefinitions="Auto,Auto,Auto,Auto,*">
         <TextBlock Classes="section" Text="SCENE / SUBMESHES" />
         <CheckBox Grid.Row="1" Margin="8,0,8,6" IsChecked="{Binding IsolateSubmesh}"
                   Content="Isolate selected submesh" />
         <Border Grid.Row="2" Margin="8,0,8,7" Padding="7" Background="#18212B" CornerRadius="3">
           <TextBlock Text="{Binding Winding.Interpretation}" TextWrapping="Wrap" FontSize="11" />
         </Border>
-        <ListBox Grid.Row="3" Margin="4" ItemsSource="{Binding Submeshes}"
+        <Border Grid.Row="3" Margin="8,0,8,7" Padding="7"
+                BorderBrush="#3A4655" BorderThickness="1" CornerRadius="3">
+          <StackPanel Spacing="4">
+            <TextBlock FontSize="10" FontWeight="SemiBold" Text="MATERIAL / AEI" />
+            <TextBlock Text="{Binding SelectedMaterialAssignment.TextureName}"
+                       TextTrimming="CharacterEllipsis" />
+            <TextBlock FontSize="10" Opacity="0.68"
+                       Text="{Binding SelectedMaterialAssignment.Confidence}" />
+            <TextBlock FontSize="10" Opacity="0.68" TextWrapping="Wrap"
+                       MaxHeight="45" Text="{Binding SelectedMaterialAssignment.Reason}" />
+            <WrapPanel>
+              <Button Margin="0,2,4,0" Command="{Binding AssignMaterialCommand}"
+                      Content="Assign…" />
+              <Button Margin="0,2,4,0" Command="{Binding ClearMaterialCommand}"
+                      Content="Clear" />
+              <Button Margin="0,2,0,0" Command="{Binding ResetMaterialCommand}"
+                      Content="Automatic" />
+            </WrapPanel>
+          </StackPanel>
+        </Border>
+        <ListBox Grid.Row="4" Margin="4" ItemsSource="{Binding Submeshes}"
                  SelectedItem="{Binding SelectedSubmesh}">
           <ListBox.ItemTemplate>
             <DataTemplate>

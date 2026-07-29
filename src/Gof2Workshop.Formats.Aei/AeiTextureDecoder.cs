@@ -204,7 +204,9 @@ public sealed class AeiTextureDecoder
 
         RgbaImage image = new(width, height);
         Span<Rgba32> colors = stackalloc Rgba32[4];
-        Span<byte> alphas = stackalloc byte[8];
+        // BC2 stores one 4-bit alpha for each of the 16 pixels. BC3 only uses the first eight
+        // entries as its interpolated palette.
+        Span<byte> alphas = stackalloc byte[16];
         int sourceOffset = 0;
 
         for (int blockY = 0; blockY < blocksHigh; blockY++)

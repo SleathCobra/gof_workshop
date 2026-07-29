@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Gof2Workshop.Core;
 using Gof2Workshop.Scene;
 
 namespace Gof2Workshop.Export;
@@ -10,7 +11,16 @@ public sealed record GltfExportResult(
     string GltfPath,
     string BinaryPath,
     int PrimitiveCount,
-    string AnimationStatus);
+    string AnimationStatus,
+    IReadOnlyList<string>? TexturePaths = null,
+    IReadOnlyList<int>? UnresolvedMaterialPrimitives = null);
+
+public sealed record GltfTextureAssignment(
+    int PrimitiveIndex,
+    string CacheKey,
+    string Name,
+    RgbaImage Image,
+    bool HasAlpha);
 
 public sealed class GltfExporter
 {
@@ -27,6 +37,21 @@ public sealed class GltfExporter
         string? baseName = null,
         CancellationToken cancellationToken = default)
     {
+        return ExportWithMaterials(
+            scene,
+            outputDirectory,
+            baseName,
+            [],
+            cancellationToken);
+    }
+
+    public GltfExportResult ExportWithMaterials(
+        SceneDocument scene,
+        string outputDirectory,
+        string? baseName,
+        IReadOnlyList<GltfTextureAssignment> textureAssignments,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(scene);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
         Directory.CreateDirectory(outputDirectory);
@@ -35,11 +60,43 @@ public sealed class GltfExporter
         string gltfPath = Path.Combine(outputDirectory, safeBaseName + ".gltf");
         string binaryPath = Path.Combine(outputDirectory, safeBaseName + ".bin");
 
+        ArgumentNullException.ThrowIfNull(textureAssignments);
+        Dictionary<int, ExportedTexture> materialTextures = [];
+        Dictionary<string, ExportedTexture> exportedByKey =
+            new(StringComparer.OrdinalIgnoreCase);
+        List<string> texturePaths = [];
+        foreach (GltfTextureAssignment assignment in textureAssignments
+                     .OrderBy(value => value.PrimitiveIndex))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!exportedByKey.TryGetValue(assignment.CacheKey, out ExportedTexture? exported))
+            {
+                string suffix = assignment.CacheKey.Length >= 10
+                    ? assignment.CacheKey[..10]
+                    : assignment.CacheKey;
+                string textureName = $"{safeBaseName}_texture_{suffix}.png";
+                string texturePath = Path.Combine(outputDirectory, textureName);
+                PngWriter.Write(assignment.Image, texturePath, cancellationToken);
+                exported = new ExportedTexture(
+                    assignment.Name,
+                    textureName,
+                    assignment.HasAlpha);
+                exportedByKey.Add(assignment.CacheKey, exported);
+                texturePaths.Add(texturePath);
+            }
+
+            materialTextures[assignment.PrimitiveIndex] = exported;
+        }
+
         using GltfBuilder builder = new();
         for (int primitiveIndex = 0; primitiveIndex < scene.Primitives.Count; primitiveIndex++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            builder.AddPrimitive(scene.Primitives[primitiveIndex], primitiveIndex);
+            materialTextures.TryGetValue(primitiveIndex, out ExportedTexture? texture);
+            builder.AddPrimitive(
+                scene.Primitives[primitiveIndex],
+                primitiveIndex,
+                texture);
         }
 
         builder.AddAnimations(scene);
@@ -57,7 +114,11 @@ public sealed class GltfExporter
             scene.Primitives.Count,
             scene.Animations.Count == 0
                 ? "Static geometry exported; no transform animation keys were present."
-                : $"{scene.Animations.Count} transform animation clip(s) exported with millisecond source times converted to seconds.");
+                : $"{scene.Animations.Count} transform animation clip(s) exported with millisecond source times converted to seconds.",
+            texturePaths,
+            Enumerable.Range(0, scene.Primitives.Count)
+                .Where(index => !materialTextures.ContainsKey(index))
+                .ToArray());
     }
 
     private sealed class GltfBuilder : IDisposable
@@ -69,8 +130,16 @@ public sealed class GltfExporter
         private readonly List<GltfMesh> meshes = [];
         private readonly List<GltfNode> nodes = [];
         private readonly List<GltfAnimation> animations = [];
+        private readonly List<GltfImage> images = [];
+        private readonly List<GltfTexture> textures = [];
+        private readonly List<GltfSampler> samplers = [];
+        private readonly Dictionary<string, int> textureByUri =
+            new(StringComparer.OrdinalIgnoreCase);
 
-        public void AddPrimitive(ScenePrimitive primitive, int primitiveIndex)
+        public void AddPrimitive(
+            ScenePrimitive primitive,
+            int primitiveIndex,
+            ExportedTexture? exportedTexture)
         {
             Vector3[] localPositions = primitive.Positions
                 .Select(position => position - primitive.SourcePivot)
@@ -108,18 +177,25 @@ public sealed class GltfExporter
 
             int indexAccessor = AddIndexAccessor(primitive.Indices);
             int materialIndex = materials.Count;
+            GltfTextureInfo? baseColorTexture = exportedTexture is null
+                ? null
+                : new GltfTextureInfo(GetOrAddTexture(exportedTexture), 0);
             materials.Add(new GltfMaterial(
                 primitive.Material.Name,
                 new GltfPbr(
-                    [
-                        primitive.Material.BaseColor.X,
-                        primitive.Material.BaseColor.Y,
-                        primitive.Material.BaseColor.Z,
-                        primitive.Material.BaseColor.W,
-                    ],
+                    exportedTexture is null
+                        ? [
+                            primitive.Material.BaseColor.X,
+                            primitive.Material.BaseColor.Y,
+                            primitive.Material.BaseColor.Z,
+                            primitive.Material.BaseColor.W,
+                        ]
+                        : [1f, 1f, 1f, 1f],
                     MetallicFactor: 0,
-                    RoughnessFactor: 0.8f),
-                DoubleSided: true));
+                    RoughnessFactor: 0.8f,
+                    BaseColorTexture: baseColorTexture),
+                DoubleSided: true,
+                AlphaMode: exportedTexture?.HasAlpha == true ? "BLEND" : "OPAQUE"));
 
             int meshIndex = meshes.Count;
             meshes.Add(new GltfMesh(
@@ -152,6 +228,27 @@ public sealed class GltfExporter
                     },
                     ["sourceSubmeshIndex"] = primitiveIndex,
                 }));
+        }
+
+        private int GetOrAddTexture(ExportedTexture exported)
+        {
+            if (textureByUri.TryGetValue(exported.Uri, out int existing))
+            {
+                return existing;
+            }
+
+            int sampler = samplers.Count;
+            samplers.Add(new GltfSampler(
+                MagFilter: 9729,
+                MinFilter: 9987,
+                WrapS: 10497,
+                WrapT: 10497));
+            int image = images.Count;
+            images.Add(new GltfImage(exported.Name, exported.Uri));
+            int texture = textures.Count;
+            textures.Add(new GltfTexture(sampler, image, exported.Name));
+            textureByUri.Add(exported.Uri, texture);
+            return texture;
         }
 
         public void AddAnimations(SceneDocument scene)
@@ -262,6 +359,9 @@ public sealed class GltfExporter
                 Nodes: nodes,
                 Meshes: meshes,
                 Materials: materials,
+                Images: images.Count == 0 ? null : images,
+                Textures: textures.Count == 0 ? null : textures,
+                Samplers: samplers.Count == 0 ? null : samplers,
                 Animations: animations.Count == 0 ? null : animations,
                 Buffers: [new GltfBuffer(binaryFileName, byteLength)],
                 BufferViews: bufferViews,
@@ -463,6 +563,9 @@ public sealed class GltfExporter
         IReadOnlyList<GltfNode> Nodes,
         IReadOnlyList<GltfMesh> Meshes,
         IReadOnlyList<GltfMaterial> Materials,
+        IReadOnlyList<GltfImage>? Images,
+        IReadOnlyList<GltfTexture>? Textures,
+        IReadOnlyList<GltfSampler>? Samplers,
         IReadOnlyList<GltfAnimation>? Animations,
         IReadOnlyList<GltfBuffer> Buffers,
         IReadOnlyList<GltfBufferView> BufferViews,
@@ -492,7 +595,8 @@ public sealed class GltfExporter
     private sealed record GltfMaterial(
         string Name,
         [property: JsonPropertyName("pbrMetallicRoughness")] GltfPbr Pbr,
-        bool DoubleSided);
+        bool DoubleSided,
+        string AlphaMode);
 
     private sealed record GltfAnimation(
         string Name,
@@ -516,7 +620,20 @@ public sealed class GltfExporter
     private sealed record GltfPbr(
         float[] BaseColorFactor,
         float MetallicFactor,
-        float RoughnessFactor);
+        float RoughnessFactor,
+        GltfTextureInfo? BaseColorTexture);
+
+    private sealed record GltfTextureInfo(int Index, int TexCoord);
+
+    private sealed record GltfImage(string Name, string Uri);
+
+    private sealed record GltfTexture(int Sampler, int Source, string Name);
+
+    private sealed record GltfSampler(
+        int MagFilter,
+        int MinFilter,
+        int WrapS,
+        int WrapT);
 
     private sealed record GltfBuffer(string Uri, int ByteLength);
 
@@ -534,4 +651,9 @@ public sealed class GltfExporter
         string Type,
         float[]? Min,
         float[]? Max);
+
+    private sealed record ExportedTexture(
+        string Name,
+        string Uri,
+        bool HasAlpha);
 }
