@@ -208,6 +208,10 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
 
         gl.BindBuffer(ArrayBuffer, 0);
         gl.BindBuffer(ElementArrayBuffer, 0);
+        if (gl.IsBindVertexArrayAvailable)
+        {
+            gl.BindVertexArray(0);
+        }
         gl.UseProgram(0);
         gl.Flush();
         stopwatch.Stop();
@@ -266,12 +270,30 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
         float[] normalLines = BuildNormalLines(primitive);
         float[] diagnostics = BuildDiagnosticLines(primitive, out int pivotVertices);
 
+        // Bind the VAO before binding an element-array buffer.  In a macOS
+        // core context GL_ELEMENT_ARRAY_BUFFER is VAO state and binding it
+        // while the default VAO (0) is active generates GL_INVALID_OPERATION.
+        int vertexArray = 0;
+        if (gl.IsGenVertexArraysAvailable)
+        {
+            vertexArray = gl.GenVertexArray();
+            gl.BindVertexArray(vertexArray);
+        }
+
         int vertexBuffer = UploadBuffer(ArrayBuffer, vertices);
         int indexBuffer = UploadBuffer(ElementArrayBuffer, primitive.Indices);
         int edgeBuffer = UploadBuffer(ElementArrayBuffer, edges);
         int normalBuffer = normalLines.Length == 0 ? 0 : UploadBuffer(ArrayBuffer, normalLines);
         int diagnosticBuffer = diagnostics.Length == 0 ? 0 : UploadBuffer(ArrayBuffer, diagnostics);
+        if (vertexArray != 0)
+        {
+            gl.BindBuffer(ArrayBuffer, vertexBuffer);
+            SetVertexLayout();
+            gl.BindBuffer(ElementArrayBuffer, indexBuffer);
+            gl.BindVertexArray(0);
+        }
         return new MeshResource(
+            vertexArray,
             vertexBuffer,
             indexBuffer,
             primitive.Indices.Length,
@@ -305,9 +327,16 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
 
     private void BindMesh(MeshResource mesh)
     {
+        if (mesh.VertexArray != 0)
+        {
+            gl.BindVertexArray(mesh.VertexArray);
+        }
         gl.BindBuffer(ArrayBuffer, mesh.VertexBuffer);
         gl.BindBuffer(ElementArrayBuffer, mesh.IndexBuffer);
-        SetVertexLayout();
+        if (mesh.VertexArray == 0)
+        {
+            SetVertexLayout();
+        }
     }
 
     private void SetVertexLayout()
@@ -505,6 +534,10 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
     {
         foreach (MeshResource mesh in meshes)
         {
+            if (mesh.VertexArray != 0)
+            {
+                gl.DeleteVertexArray(mesh.VertexArray);
+            }
             gl.DeleteBuffer(mesh.VertexBuffer);
             gl.DeleteBuffer(mesh.IndexBuffer);
             gl.DeleteBuffer(mesh.EdgeBuffer);
@@ -697,6 +730,7 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
     }
 
     private sealed record MeshResource(
+        int VertexArray,
         int VertexBuffer,
         int IndexBuffer,
         int IndexCount,
