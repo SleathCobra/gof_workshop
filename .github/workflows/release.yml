@@ -2,8 +2,8 @@ name: Release Workshop
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - '**'
   workflow_dispatch:
 
 permissions:
@@ -151,8 +151,8 @@ jobs:
           retention-days: 14
 
   release:
-    name: Create GitHub release
-    if: startsWith(github.ref, 'refs/tags/v')
+    name: Publish nightly GitHub release
+    if: needs.publish.result == 'success'
     needs: publish
     runs-on: ubuntu-latest
     steps:
@@ -163,9 +163,17 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Publish release and checksums
+      - name: Replace previous nightly release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete nightly --yes --cleanup-tag || true
+
+      - name: Publish nightly release and checksums
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          generate_release_notes: true
+          tag_name: nightly
+          target_commitish: ${{ github.sha }}
+          name: Galaxy on Fire 2 Workshop (Nightly)
+          prerelease: true
+          make_latest: false
           files: dist/*

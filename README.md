@@ -61,11 +61,11 @@ The synthetic tests do not need game assets. Local corpus tests skip inconclusiv
 
 ## Release builds
 
-Pushing a version tag such as `v0.2.0` starts `.github/workflows/release.yml`. The workflow
-validates the solution, then publishes self-contained artifacts for Windows x64, Linux x64,
-macOS Intel, and macOS Apple Silicon. Each archive includes a SHA-256 checksum and the tagged
-run creates the GitHub Release automatically. A workflow dispatch can produce CI artifacts
-without publishing a release.
+Every branch push starts `.github/workflows/release.yml`. The workflow validates the solution,
+then publishes self-contained artifacts for Windows x64, Linux x64, macOS Intel, and macOS
+Apple Silicon. Each archive includes a SHA-256 checksum and the workflow replaces a single
+prerelease tagged `nightly` with the current build. A workflow dispatch can run the same process
+manually. Versioned releases can still be created separately from a downloaded artifact.
 
 ## Technical testbed
 
