@@ -59,6 +59,14 @@ dotnet test GalaxyOnFire2Workshop.sln --configuration Release --no-build
 
 The synthetic tests do not need game assets. Local corpus tests skip inconclusively when `data/` is absent.
 
+## Release builds
+
+Pushing a version tag such as `v0.2.0` starts `.github/workflows/release.yml`. The workflow
+validates the solution, then publishes self-contained artifacts for Windows x64, Linux x64,
+macOS Intel, and macOS Apple Silicon. Each archive includes a SHA-256 checksum and the tagged
+run creates the GitHub Release automatically. A workflow dispatch can produce CI artifacts
+without publishing a release.
+
 ## Technical testbed
 
 Show all commands:
