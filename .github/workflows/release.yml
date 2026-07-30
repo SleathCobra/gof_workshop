@@ -55,11 +55,11 @@ jobs:
             rid: linux-x64
             archive: tar.gz
           - name: macOS Apple Silicon
-            os: macos-14
+            os: macos-15
             rid: osx-arm64
             archive: tar.gz
           - name: macOS Intel
-            os: macos-13
+            os: macos-15-intel
             rid: osx-x64
             archive: tar.gz
 
