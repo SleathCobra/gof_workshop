@@ -21,9 +21,10 @@ public sealed class LocalCorpusTests
             AssetOwnership.Game,
             Core.ProfileCatalog.Pc1X);
 
-        Assert.AreEqual(1_980, result.Assets.Count);
+        Assert.AreEqual(1_991, result.Assets.Count);
         Assert.AreEqual(1_228, result.Assets.Count(asset => asset.Kind == Core.AssetKind.Aei));
         Assert.AreEqual(752, result.Assets.Count(asset => asset.Kind == Core.AssetKind.Aem));
+        Assert.AreEqual(11, result.Assets.Count(asset => asset.Kind == Core.AssetKind.Language));
         Assert.AreEqual(
             0,
             result.Assets.Count(asset => asset.Support == AssetSupport.RecognizedUnsupported));

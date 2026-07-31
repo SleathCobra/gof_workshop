@@ -245,6 +245,35 @@ public sealed class AemParserTests
     }
 
     [TestMethod]
+    public void SoftwarePreviewSamplesAssignedRgbaTexture()
+    {
+        using MemoryStream stream = new(CreateV4Fixture(includeAuxiliary: false));
+        SceneDocument scene = new AemSceneConverter().Convert(
+            new AemParser().Parse(stream, "textured.aem"));
+        RgbaImage texture = new(2, 2);
+        texture.SetPixel(0, 0, new Rgba32(255, 0, 0, 255));
+        texture.SetPixel(1, 0, new Rgba32(0, 255, 0, 255));
+        texture.SetPixel(0, 1, new Rgba32(0, 0, 255, 255));
+        texture.SetPixel(1, 1, new Rgba32(255, 255, 0, 255));
+        ScenePreviewRenderer renderer = new();
+        ScenePreviewOptions common = new(
+            128,
+            128,
+            Wireframe: false,
+            ShowNormals: false,
+            ShowPivots: false,
+            ShowBoundingSpheres: false);
+        RgbaImage flat = renderer.Render(scene, common).Image;
+        RgbaImage textured = renderer.Render(
+            scene,
+            common with { Textures = new Dictionary<int, RgbaImage> { [0] = texture } }).Image;
+
+        CollectionAssert.AreNotEqual(
+            flat.ReadOnlyPixelBytes.ToArray(),
+            textured.ReadOnlyPixelBytes.ToArray());
+    }
+
+    [TestMethod]
     public void SnapshotWriterRoundTripsEverySupportedLayout()
     {
         foreach (byte[] fixture in new[]

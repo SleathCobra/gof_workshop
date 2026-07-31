@@ -44,7 +44,10 @@ public sealed record SceneViewportRendererInfo(
     string Vendor,
     string Device,
     int MaximumTextureSize,
-    bool HardwareAccelerated);
+    bool HardwareAccelerated,
+    string ContextProfile = "Unknown",
+    string ShadingLanguageVersion = "Unknown",
+    string ShaderDialect = "Unknown");
 
 public sealed record SceneViewportFrameMetrics(
     double FrameMilliseconds,

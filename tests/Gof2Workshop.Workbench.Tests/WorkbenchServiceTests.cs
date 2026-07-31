@@ -9,6 +9,26 @@ public sealed class WorkbenchServiceTests
 {
     private string temporaryRoot = null!;
 
+    [TestMethod]
+    public void PlatformProfilesAreExplicitAndGof3DIsIsolated()
+    {
+        string[] expected =
+        [
+            "gof2-pc-1x",
+            "gof2-android",
+            "gof2-ios",
+            "gof2-macos",
+            "gof3d-ios-research",
+        ];
+
+        CollectionAssert.AreEqual(expected, ProfileCatalog.All.Select(profile => profile.Id).ToArray());
+        Assert.AreEqual(AssetProduct.GalaxyOnFire3D, ProfileCatalog.Gof3DIosResearch.Details.Product);
+        Assert.AreEqual(ProfileSupportLevel.ResearchReadOnly, ProfileCatalog.Gof3DIosResearch.Details.AemReadSupport);
+        Assert.AreEqual(ProfileSupportLevel.Unsupported, ProfileCatalog.Gof3DIosResearch.Details.AemWriteSupport);
+        Assert.AreSame(ProfileCatalog.Pc1X, ProfileCatalog.Resolve("pc-1x"));
+        Assert.AreSame(ProfileCatalog.Android, ProfileCatalog.Resolve("android"));
+    }
+
     [TestInitialize]
     public void Initialize()
     {
@@ -180,8 +200,8 @@ public sealed class WorkbenchServiceTests
             Path.Combine(root, "textures", "dxt5.aei"),
             CreateAeiHeader(0x24));
         await File.WriteAllBytesAsync(
-            Path.Combine(root, "textures", "pvrtc.aei"),
-            CreateAeiHeader(0x10));
+            Path.Combine(root, "textures", "etc1.aei"),
+            CreateAeiHeader(0x40));
         await File.WriteAllBytesAsync(
             Path.Combine(root, "models", "ship.aem"),
             CreateAemHeader("V5AEMesh", 0x17));
@@ -200,6 +220,33 @@ public sealed class WorkbenchServiceTests
             result.Assets.Where(asset => asset.Support == AssetSupport.Supported));
         Assert.HasCount(1, result.Problems);
         StringAssert.Contains(result.Problems[0].Message, "outside the expected");
+    }
+
+    [TestMethod]
+    public async Task QuickInspectIndexesStandaloneAssetsAndKeepsCompanionsReadOnly()
+    {
+        string aeiPath = Path.Combine(temporaryRoot, "texture.aei");
+        string aemPath = Path.Combine(temporaryRoot, "model.aem");
+        string languagePath = Path.Combine(temporaryRoot, "english.lang");
+        string pngPath = Path.Combine(temporaryRoot, "texture.png");
+        await File.WriteAllBytesAsync(aeiPath, CreateAeiHeader(0x24));
+        await File.WriteAllBytesAsync(aemPath, CreateAemHeader("V4AEMesh", 0x17));
+        await File.WriteAllBytesAsync(languagePath, [0, 1, (byte)'A']);
+        await File.WriteAllBytesAsync(pngPath, [1, 2, 3]);
+        InspectionCollection collection = new(ProfileCatalog.Pc1X);
+
+        InspectionCollectionUpdate update = await collection.AddAsync(
+            [aeiPath, aemPath, languagePath, pngPath, aeiPath]);
+
+        Assert.HasCount(3, update.AddedAssets);
+        Assert.HasCount(3, collection.Assets);
+        Assert.HasCount(1, collection.Assets.Where(asset => asset.Kind == AssetKind.Language));
+        Assert.HasCount(1, collection.CompanionFiles);
+        Assert.IsTrue(collection.Assets.All(asset => asset.Ownership == AssetOwnership.Game));
+        WorkspaceDefinition transient = collection.CreateTransientWorkspace();
+        Assert.IsNull(transient.FilePath);
+        Assert.IsNull(transient.GameAssetRoot);
+        Assert.AreEqual(ProfileCatalog.Pc1X.Id, transient.ProfileId);
     }
 
     [TestMethod]
@@ -268,6 +315,57 @@ public sealed class WorkbenchServiceTests
                 AssetOwnership.Game,
                 ProfileCatalog.Pc1X,
                 cancellationToken: cancellation.Token));
+    }
+
+    [TestMethod]
+    public void MaterialResolutionFeedsUsesAndReferencedByGraphWithoutClaimingGameWrite()
+    {
+        IndexedAsset model = CreateIndexed(
+            "meshes/fighter_lod_0.aem",
+            AssetKind.Aem,
+            "v4",
+            AssetSupport.Supported);
+        IndexedAsset texture = CreateIndexed(
+            "textures/fighter_diffuse.aei",
+            AssetKind.Aei,
+            "0x24",
+            AssetSupport.Supported);
+        AssetRelationshipService service = new();
+        service.UpdateAssets([model, texture]);
+
+        AssetRelationshipResolution resolution = service.ResolveMaterial(
+            new WorkspaceDefinition(),
+            model,
+            0);
+
+        Assert.AreSame(texture, resolution.SelectedAsset);
+        IReadOnlyList<AssetDependency> uses = service.GetUses(model);
+        Assert.HasCount(1, uses);
+        AssetDependency use = uses[0];
+        Assert.AreEqual(AssetDependencyKind.MaterialTexture, use.Kind);
+        Assert.AreEqual(AssetDependencyEffect.HeuristicGameMapping, use.Effect);
+        IReadOnlyList<AssetDependency> references = service.GetReferencedBy(texture);
+        Assert.HasCount(1, references);
+        Assert.AreSame(model, references[0].Source);
+    }
+
+    [TestMethod]
+    public void ManualMaterialMappingIsExplicitlyViewerOnly()
+    {
+        IndexedAsset model = CreateIndexed("meshes/custom.aem", AssetKind.Aem, "v4", AssetSupport.Supported);
+        IndexedAsset texture = CreateIndexed("textures/paint.aei", AssetKind.Aei, "0x24", AssetSupport.Supported);
+        WorkspaceDefinition workspace = new() { GameAssetRoot = temporaryRoot };
+        AssetRelationshipService service = new();
+        service.UpdateAssets([texture]);
+        service.SetMaterialOverride(workspace, model, 1, texture);
+
+        _ = service.ResolveMaterial(workspace, model, 1);
+
+        IReadOnlyList<AssetDependency> dependencies = service.GetUses(model);
+        Assert.HasCount(1, dependencies);
+        AssetDependency dependency = dependencies[0];
+        Assert.AreEqual(AssetDependencyEffect.ViewerOnly, dependency.Effect);
+        Assert.AreEqual(AssetRelationshipConfidence.Confirmed, dependency.Confidence);
     }
 
     [TestMethod]

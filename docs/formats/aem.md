@@ -75,3 +75,18 @@ Euler-radian rotation keys use the Abyss Engine's signed Euler-to-quaternion con
 Submesh, vertex, index, key, and trailing-data limits are explicit. Every indexed vertex is range-checked. Non-finite floats, truncated arrays, invalid storage selectors, and arithmetic overflow fail with controlled offset/field diagnostics.
 
 `AemWriter.Write` serializes the decoded v1-v5 structure with explicit version-specific numeric encodings, channel/flag validation, bounded counts, animation storage markers, preserved v1 strip indices/lengths, and uninterpreted trailing bytes. Unchanged fixtures for every version and all 752 real corpus files round-trip byte-for-byte. Edited v2-v5 triangle indices and decoded geometry/animation fields are serialized after representability checks; v1 topology edits require a valid preserved strip grouping. `WriteSnapshot` remains available for callers that specifically need the immutable original byte sequence.
+
+## Import and authoring boundary
+
+The import layer accepts a bounded triangle subset of glTF 2.0/GLB and OBJ/MTL. It validates finite
+positions, optional normals/UVs, 16-bit target limits, sidecar containment, unsupported topology,
+and node-transform baking before constructing an AEM target scene. PC v4 and v5 targets serialize,
+reparse, scene-convert, render, and compare vertex/index/submesh statistics before an output is
+reported as valid. Skinning, morph targets, multiple UV sets, and arbitrary node hierarchies are
+rejected or reported rather than silently discarded. Platform-specific AEM writing is still disabled
+until representative outputs are accepted by the target games.
+
+The desktop animation panel exposes stored transform curves and keys. Confirmed translation,
+rotation, and scale keys are editable only in mod-owned documents, with operation-based undo/redo and
+writer/reparse validation. UV and special channels remain preserved and read-only. Blender animation
+reimport is not implemented because a validated node/channel round trip is not yet available.

@@ -5,10 +5,55 @@ using Gof2Workshop.App.Presentation;
 using Gof2Workshop.Export;
 using Gof2Workshop.Formats.Aei;
 using Gof2Workshop.Formats.Aem;
+using Gof2Workshop.GameData;
 using Gof2Workshop.Scene;
 using Gof2Workshop.Workbench;
 
 namespace Gof2Workshop.App.Documents;
+
+public sealed class LanguageEditorProvider : IDocumentEditorProvider
+{
+    private readonly IUserDialogService dialogs;
+    private readonly IOutputService output;
+    private readonly IProblemService problems;
+
+    public LanguageEditorProvider(
+        IUserDialogService dialogs,
+        IOutputService output,
+        IProblemService problems)
+    {
+        this.dialogs = dialogs;
+        this.output = output;
+        this.problems = problems;
+    }
+
+    public string Name => "Language Table Editor";
+
+    public int Priority => 100;
+
+    public bool CanOpen(IndexedAsset asset) =>
+        asset.Kind == Core.AssetKind.Language && asset.Support == AssetSupport.Supported;
+
+    public async Task<IDocument> OpenAsync(EditorOpenContext context)
+    {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        LanguageTable table = await Task.Run(
+            () => new LanguageTableParser().Parse(context.Asset.FullPath),
+            context.CancellationToken);
+        output.Write(
+            OutputLevel.Information,
+            "Open",
+            $"{context.Asset.FileName}: {table.Entries.Count:N0} language entries parsed in " +
+            $"{stopwatch.Elapsed.TotalMilliseconds:N0} ms.");
+        return new LanguageDocumentViewModel(
+            context.Asset,
+            table,
+            context.Workspace,
+            dialogs,
+            output,
+            problems);
+    }
+}
 
 public sealed class AeiEditorProvider : IDocumentEditorProvider
 {

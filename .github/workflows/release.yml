@@ -30,6 +30,9 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Install WebAssembly workload
+        run: dotnet workload install wasm-tools
+
       - name: Restore
         run: dotnet restore GalaxyOnFire2Workshop.sln
 
@@ -91,7 +94,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $name = "GalaxyOnFire2Workshop-${{ matrix.rid }}-${{ github.ref_name }}"
+          $name = "GalaxyOnFire2Workshop-${{ matrix.rid }}-nightly-${{ github.run_number }}"
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item LICENSE "publish/LICENSE.txt"
           Compress-Archive -Path publish/* -DestinationPath "dist/$name.zip"
@@ -101,7 +104,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          name="GalaxyOnFire2Workshop-${{ matrix.rid }}-${GITHUB_REF_NAME}"
+          name="GalaxyOnFire2Workshop-${{ matrix.rid }}-nightly-${GITHUB_RUN_NUMBER}"
           mkdir -p dist "$name"
           cp LICENSE "$name/LICENSE.txt"
           if [[ "${{ matrix.rid }}" == osx-* ]]; then
@@ -117,8 +120,8 @@ jobs:
               '  <key>CFBundleIdentifier</key><string>org.gof2workshop.app</string>' \
               '  <key>CFBundleName</key><string>Galaxy on Fire 2 Workshop</string>' \
               '  <key>CFBundlePackageType</key><string>APPL</string>' \
-              "  <key>CFBundleShortVersionString</key><string>${GITHUB_REF_NAME#v}</string>" \
-              "  <key>CFBundleVersion</key><string>${GITHUB_SHA:0:12}</string>" \
+              '  <key>CFBundleShortVersionString</key><string>0.0.0</string>' \
+              "  <key>CFBundleVersion</key><string>${GITHUB_RUN_NUMBER}</string>" \
               '  <key>LSMinimumSystemVersion</key><string>14.0</string>' \
               '  <key>NSHighResolutionCapable</key><true/>' \
               '</dict></plist>' > "$app/Contents/Info.plist"
@@ -150,10 +153,56 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  publish-browser:
+    name: Publish browser-local WebAssembly
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install WebAssembly workload
+        run: dotnet workload install wasm-tools
+
+      - name: Publish static browser host
+        run: >-
+          dotnet publish src/Gof2Workshop.Browser/Gof2Workshop.Browser.csproj
+          --configuration Release
+          --output publish-browser
+
+      - name: Package browser host
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="GalaxyOnFire2Workshop-browser-nightly-${GITHUB_RUN_NUMBER}"
+          mkdir -p dist "$name"
+          cp -R publish-browser/. "$name/"
+          cp LICENSE "$name/LICENSE.txt"
+          tar -czf "dist/$name.tar.gz" "$name"
+          cd dist
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum *.tar.gz > SHA256SUMS-browser
+          else
+            shasum -a 256 *.tar.gz | awk '{print $1 "  " $2}' > SHA256SUMS-browser
+          fi
+
+      - name: Upload browser artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-browser
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
   release:
     name: Publish nightly GitHub release
-    if: needs.publish.result == 'success'
-    needs: publish
+    if: needs.publish.result == 'success' && needs.publish-browser.result == 'success'
+    needs: [publish, publish-browser]
     runs-on: ubuntu-latest
     steps:
       - name: Download platform artifacts

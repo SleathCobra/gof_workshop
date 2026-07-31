@@ -6,6 +6,7 @@ using Gof2Workshop.Core;
 using Gof2Workshop.Export;
 using Gof2Workshop.Formats.Aei;
 using Gof2Workshop.Formats.Aem;
+using Gof2Workshop.Import;
 using Gof2Workshop.Scene;
 
 namespace Gof2Workshop.Testbed;
@@ -75,6 +76,8 @@ internal static class Program
             "aem-preview" => AemPreview(args, logger, cancellationToken),
             "view" => View(args, logger, cancellationToken),
             "validate-corpus" => ValidateCorpus(args, logger, cancellationToken),
+            "compare-corpora" => CompareCorpora(args, logger, cancellationToken),
+            "model-import" => ImportModel(args, logger, cancellationToken),
             "generate-synthetic" => GenerateSynthetic(args, logger),
             _ => throw new ArgumentException($"Unknown command '{args.Command}'. Run 'help' for usage."),
         };
@@ -331,6 +334,7 @@ internal static class Program
             root,
             ResolveProfile(args),
             args.HasFlag("decode"),
+            args.HasFlag("roundtrip"),
             limit,
             cancellationToken);
         Console.WriteLine(JsonSerializer.Serialize(report, JsonOptions));
@@ -341,6 +345,33 @@ internal static class Program
     private static AssetPlatformProfile ResolveProfile(CliArguments args)
     {
         return ProfileCatalog.Resolve(args.GetOption("profile", ProfileCatalog.Pc1X.Id));
+    }
+
+    private static int CompareCorpora(
+        CliArguments args,
+        CliLogger logger,
+        CancellationToken cancellationToken)
+    {
+        if (args.Positionals.Count != 5)
+        {
+            throw new ArgumentException(
+                "compare-corpora requires roots in this order: PC Android iOS macOS GOF3D-iOS.");
+        }
+
+        AssetPlatformProfile[] profiles =
+        [
+            ProfileCatalog.Pc1X,
+            ProfileCatalog.Android,
+            ProfileCatalog.IOS,
+            ProfileCatalog.MacOS,
+            ProfileCatalog.Gof3DIosResearch,
+        ];
+        MultiCorpusInventoryReport report = new MultiCorpusInventory().Scan(
+            profiles.Zip(args.Positionals, (profile, root) => (profile, root)).ToArray(),
+            cancellationToken);
+        Console.WriteLine(JsonSerializer.Serialize(report, JsonOptions));
+        WriteJsonOption(args, "json", report, logger);
+        return report.Corpora.All(corpus => corpus.Present) ? 0 : 3;
     }
 
     private static void WriteJsonOption(
@@ -381,14 +412,16 @@ internal static class Program
             Galaxy on Fire 2 Workshop technical testbed
 
             Commands:
-              scan <folder> [--profile pc-1x|android] [--json work/inventory.json]
-              aei-info <file> [--profile pc-1x] [--research]
-              aei-export <file> [--output work/name-aei] [--profile pc-1x]
-              aem-info <file> [--profile pc-1x] [--research]
+              scan <folder> [--profile gof2-pc-1x|gof2-android|gof2-ios|gof2-macos|gof3d-ios-research] [--json path]
+              aei-info <file> [--profile profile-id] [--research]
+              aei-export <file> [--output work/name-aei] [--profile profile-id]
+              aem-info <file> [--profile profile-id] [--research]
               aem-export <file> [--format gltf|obj|both] [--output work/name-aem]
               aem-preview <file> [--output work/name-preview.png] [--size 1024] [--time seconds]
               view <file> [--output path]
-              validate-corpus <folder> [--decode] [--limit N] [--json work/validation.json]
+              validate-corpus <folder> [--decode] [--roundtrip] [--limit N] [--profile profile-id] [--json path]
+              compare-corpora <pc> <android> <ios> <macos> <gof3d-ios> [--json path]
+              model-import <gltf|glb|obj> [--version 4|5] [--output work/custom.aem] [--preview path]
               generate-synthetic [--output samples/SyntheticDemo]
 
             Generated outputs should remain under the ignored work/ directory.
@@ -404,6 +437,70 @@ internal static class Program
             "synthetic.generated",
             "Original CC0/MIT demonstration assets generated.",
             ("output", DisplayPath(output)));
+        return 0;
+    }
+
+    private static int ImportModel(
+        CliArguments args,
+        CliLogger logger,
+        CancellationToken cancellationToken)
+    {
+        string source = args.RequirePositional(0, "glTF, GLB, or OBJ model");
+        string extension = Path.GetExtension(source);
+        ImportedScene imported = extension.ToLowerInvariant() switch
+        {
+            ".gltf" or ".glb" => new GltfModelImporter().Import(source, cancellationToken),
+            ".obj" => new ObjModelImporter().Import(source, cancellationToken),
+            _ => throw new NotSupportedException(
+                $"Model extension '{extension}' is unsupported. Choose glTF, GLB, or OBJ."),
+        };
+        int versionNumber = int.Parse(
+            args.GetOption("version", "4"),
+            NumberStyles.None,
+            CultureInfo.InvariantCulture);
+        AemVersion version = versionNumber switch
+        {
+            4 => AemVersion.V4,
+            5 => AemVersion.V5,
+            _ => throw new ArgumentException("Custom model target version must be 4 or 5."),
+        };
+        AemAuthoringResult authored = new AemAuthoringService().Author(
+            imported,
+            new AemAuthoringOptions(version),
+            cancellationToken);
+        string output = args.GetOption(
+            "output",
+            Path.Combine("work", ObjExporter.SanitizeFileName(imported.Name) + $"-v{versionNumber}.aem"));
+        string? outputDirectory = Path.GetDirectoryName(Path.GetFullPath(output));
+        if (outputDirectory is not null)
+        {
+            Directory.CreateDirectory(outputDirectory);
+        }
+
+        File.WriteAllBytes(output, authored.Bytes);
+        string preview = args.GetOption(
+            "preview",
+            Path.ChangeExtension(output, ".preview.png"));
+        new ScenePreviewRenderer().RenderToPng(
+            authored.Scene,
+            preview,
+            new ScenePreviewOptions(Width: 960, Height: 640),
+            cancellationToken);
+        logger.Info(
+            "model.imported",
+            "Imported model authored, reparsed, and rendered successfully.",
+            ("source", Path.GetFileName(source)),
+            ("target", $"AEM v{versionNumber}"),
+            ("submeshes", authored.Reparsed.Submeshes.Count),
+            ("vertices", authored.Reparsed.Submeshes.Sum(value => value.Positions.Length)),
+            ("triangles", authored.Reparsed.Submeshes.Sum(value => value.Indices.Length / 3)),
+            ("output", DisplayPath(output)),
+            ("preview", DisplayPath(preview)));
+        foreach (ModelImportDiagnostic diagnostic in authored.Diagnostics)
+        {
+            logger.Info("model.diagnostic", diagnostic.Message, ("code", diagnostic.Code));
+        }
+
         return 0;
     }
 }

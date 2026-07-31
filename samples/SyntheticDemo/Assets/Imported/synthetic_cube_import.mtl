@@ -1,0 +1,7 @@
+# Galaxy on Fire 2 Workshop material placeholders
+
+newmtl material_00
+Ka 0.030000001 0.093 0.12900001
+Kd 0.2 0.62 0.86
+d 1
+illum 2

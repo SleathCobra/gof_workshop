@@ -203,7 +203,10 @@ public sealed class AemWriter
 
         if (file.Version <= AemVersion.V2)
         {
-            writer.Write(mesh.IsTransparent ? (byte)1 : (byte)0);
+            if (mesh.HasLegacyTransparencyByte)
+            {
+                writer.Write(mesh.IsTransparent ? (byte)1 : (byte)0);
+            }
         }
         else
         {
@@ -483,10 +486,16 @@ public sealed class AemWriter
 
     private static void ValidateSubmesh(AemFile file, AemSubmesh mesh)
     {
-        if (mesh.Positions.Length == 0 || mesh.Positions.Length > ushort.MaxValue)
+        if (mesh.Positions.Length > ushort.MaxValue)
         {
             throw new InvalidDataException(
-                $"Submesh {mesh.Index} vertex count is outside 1..{ushort.MaxValue}.");
+                $"Submesh {mesh.Index} vertex count exceeds {ushort.MaxValue}.");
+        }
+
+        if (mesh.Positions.Length == 0 && mesh.Indices.Length != 0)
+        {
+            throw new InvalidDataException(
+                $"Empty submesh {mesh.Index} cannot contain indices.");
         }
 
         ValidateFinite(mesh.Pivot, $"submesh {mesh.Index} pivot");

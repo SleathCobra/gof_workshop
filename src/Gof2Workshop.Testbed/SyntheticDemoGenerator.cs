@@ -4,6 +4,9 @@ using System.Text.Json;
 using Gof2Workshop.Core;
 using Gof2Workshop.Export;
 using Gof2Workshop.Formats.Aei;
+using Gof2Workshop.Formats.Aem;
+using Gof2Workshop.GameData;
+using Gof2Workshop.Scene;
 
 namespace Gof2Workshop.Testbed;
 
@@ -17,6 +20,8 @@ internal static class SyntheticDemoGenerator
         Directory.CreateDirectory(root);
         Directory.CreateDirectory(Path.Combine(root, "Assets", "Textures"));
         Directory.CreateDirectory(Path.Combine(root, "Assets", "Models"));
+        Directory.CreateDirectory(Path.Combine(root, "Assets", "Imported"));
+        Directory.CreateDirectory(Path.Combine(root, "Assets", "Data"));
         Directory.CreateDirectory(Path.Combine(root, "SampleMod", ".work"));
 
         RgbaImage atlas = CreateAtlas(16, 16, alpha: false);
@@ -40,6 +45,11 @@ internal static class SyntheticDemoGenerator
             0x24,
             alphaAtlas,
             mipmaps: false);
+        WriteCompressedAei(
+            Path.Combine(root, "Assets", "Textures", "synthetic_bc2_alpha.aei"),
+            0x21,
+            alphaAtlas,
+            mipmaps: false);
         WriteAei(
             Path.Combine(root, "Assets", "Textures", "synthetic_overlap.aei"),
             0x01,
@@ -58,6 +68,10 @@ internal static class SyntheticDemoGenerator
         WriteSpacecraftAem(
             Path.Combine(root, "Assets", "Models", "synthetic_animated.aem"),
             animated: true);
+        WriteLegacyAemFixtures(Path.Combine(root, "Assets", "Models"));
+        WriteStaticV5Aem(Path.Combine(root, "Assets", "Models", "synthetic_v5.aem"));
+        WriteLanguageTable(Path.Combine(root, "Assets", "Data", "synthetic.lang"));
+        WriteImportFixtures(root);
 
         string source = Path.Combine(root, "Assets", "Textures", "synthetic_raw.aei");
         string sourceHash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(source)));
@@ -71,7 +85,7 @@ internal static class SyntheticDemoGenerator
                     ModId = "workshop.synthetic-demo",
                     Author = "GOF2 Workshop contributors",
                     ModVersion = "0.1.0",
-                    ProfileId = "pc-1x",
+                    ProfileId = "gof2-pc-1x",
                     GameAssetRoot = "Assets",
                     ModRoot = "SampleMod",
                     OutputRoot = "SampleMod/Generated",
@@ -108,7 +122,7 @@ internal static class SyntheticDemoGenerator
                     name = "Public Synthetic Demo",
                     author = "GOF2 Workshop contributors",
                     version = "0.1.0",
-                    targetProfile = "pc-1x",
+                    targetProfile = "gof2-pc-1x",
                     assets = Array.Empty<object>(),
                 },
                 JsonOptions));
@@ -171,6 +185,7 @@ internal static class SyntheticDemoGenerator
         AeiCompressionFormat compression = (format & 0xFD) switch
         {
             0x20 => AeiCompressionFormat.Dxt1,
+            0x21 => AeiCompressionFormat.Dxt3,
             0x24 => AeiCompressionFormat.Dxt5,
             _ => throw new InvalidOperationException(),
         };
@@ -240,6 +255,120 @@ internal static class SyntheticDemoGenerator
             0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5,
         ];
         WriteAem(path, [(Vector3.Zero, positions, indices)], animated: false);
+    }
+
+    private static void WriteLegacyAemFixtures(string directory)
+    {
+        using (FileStream stream = File.Create(Path.Combine(directory, "synthetic_v1.aem")))
+        using (BinaryWriter writer = new(stream))
+        {
+            writer.Write("AEMesh\0"u8);
+            writer.Write((byte)0x17);
+            writer.Write((ushort)4);
+            foreach (ushort index in new ushort[] { 0, 1, 2, 3 }) writer.Write(index);
+            writer.Write((ushort)1);
+            writer.Write((ushort)4);
+            writer.Write((ushort)4);
+            foreach (short value in new short[]
+            {
+                0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0,
+                0, 0, 256, 0, 0, 256, 256, 256,
+            }) writer.Write(value);
+            for (int index = 0; index < 4; index++)
+            {
+                writer.Write((short)0);
+                writer.Write((short)0);
+                writer.Write((short)256);
+            }
+
+            writer.Write((byte)1);
+        }
+
+        using (FileStream stream = File.Create(Path.Combine(directory, "synthetic_v2.aem")))
+        using (BinaryWriter writer = new(stream))
+        {
+            writer.Write("V2AEMesh\0"u8);
+            writer.Write((byte)0x17);
+            WriteLegacyTriangle(writer);
+            writer.Write((byte)0);
+        }
+
+        using (FileStream stream = File.Create(Path.Combine(directory, "synthetic_v3.aem")))
+        using (BinaryWriter writer = new(stream))
+        {
+            writer.Write("V3AEMesh\0"u8);
+            writer.Write((byte)0x17);
+            writer.Write((ushort)1);
+            WriteVector3(writer, Vector3.Zero);
+            WriteLegacyTriangle(writer);
+            WriteVector4(writer, new Vector4(0.5f, 0.5f, 0, 2));
+            WriteStaticTransform(writer);
+            writer.Write((short)0);
+        }
+    }
+
+    private static void WriteLegacyTriangle(BinaryWriter writer)
+    {
+        writer.Write((ushort)3);
+        foreach (ushort index in new ushort[] { 0, 1, 2 }) writer.Write(index);
+        writer.Write((ushort)3);
+        foreach (int value in new[]
+        {
+            0, 0, 0, 65536, 0, 0, 0, 65536, 0,
+        }) writer.Write(value);
+        foreach (short value in new short[] { 0, 0, 4096, 0, 0, 4096 }) writer.Write(value);
+        for (int index = 0; index < 3; index++)
+        {
+            writer.Write((short)0);
+            writer.Write((short)0);
+            writer.Write(short.MaxValue);
+        }
+    }
+
+    private static void WriteStaticV5Aem(string path)
+    {
+        using FileStream stream = File.Create(path);
+        using BinaryWriter writer = new(stream);
+        writer.Write("V5AEMesh\0"u8);
+        writer.Write((byte)0x17);
+        writer.Write((ushort)1);
+        WriteVector3(writer, Vector3.Zero);
+        writer.Write((ushort)3);
+        foreach (ushort index in new ushort[] { 0, 1, 2 }) writer.Write(index);
+        writer.Write((ushort)3);
+        foreach (Vector3 point in new[] { Vector3.Zero, Vector3.UnitX, Vector3.UnitY }) WriteVector3(writer, point);
+        writer.Write(0f); writer.Write(0f);
+        writer.Write(1f); writer.Write(0f);
+        writer.Write(0f); writer.Write(1f);
+        for (int index = 0; index < 3; index++) WriteVector3(writer, Vector3.UnitZ);
+        WriteVector4(writer, new Vector4(0.5f, 0.5f, 0, 2));
+        WriteStaticTransform(writer);
+        writer.Write((short)-1);
+        writer.Write((short)0);
+        writer.Write((short)0);
+    }
+
+    private static void WriteLanguageTable(string path)
+    {
+        LanguageTable table = new([
+            new LanguageEntry(0, "Language", 0),
+            new LanguageEntry(1, "Synthetic English", 0),
+            new LanguageEntry(2, "Welcome to the public Workshop sample.", 0),
+            new LanguageEntry(3, "Texture", 0),
+            new LanguageEntry(4, "Model", 0),
+        ]);
+        using FileStream output = File.Create(path);
+        new LanguageTableWriter().Write(table, output);
+    }
+
+    private static void WriteImportFixtures(string root)
+    {
+        string sourceAem = Path.Combine(root, "Assets", "Models", "synthetic_cube.aem");
+        AemFile parsed = new AemParser().Parse(sourceAem);
+        SceneDocument scene = new AemSceneConverter().Convert(parsed);
+        string importDirectory = Path.Combine(root, "Assets", "Imported");
+        _ = new GltfExporter().Export(scene, importDirectory, "synthetic_cube_import");
+        _ = new ObjExporter().Export(scene, importDirectory, "synthetic_cube_import");
     }
 
     private static void WriteSpacecraftAem(string path, bool animated)

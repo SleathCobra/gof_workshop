@@ -18,7 +18,8 @@ public sealed record ScenePreviewOptions(
     SceneCamera? Camera = null,
     int? IsolatedPrimitiveIndex = null,
     bool ShowFaceWinding = false,
-    float? AnimationTimeSeconds = null);
+    float? AnimationTimeSeconds = null,
+    IReadOnlyDictionary<int, RgbaImage>? Textures = null);
 
 public sealed record SceneCamera(
     float Yaw = -0.610865238f,
@@ -106,7 +107,23 @@ public sealed class ScenePreviewRenderer
 
                 if (options.Solid)
                 {
-                    FillTriangle(image, depth, a, b, c, shaded);
+                    RgbaImage? texture = options.Textures is not null &&
+                        options.Textures.TryGetValue(primitiveIndex, out RgbaImage? assigned)
+                        ? assigned
+                        : null;
+                    Vector2[]? uvs = primitive.TextureCoordinates;
+                    FillTriangle(
+                        image,
+                        depth,
+                        a,
+                        b,
+                        c,
+                        shaded,
+                        texture,
+                        uvs is null ? null : uvs[primitive.Indices[index]],
+                        uvs is null ? null : uvs[primitive.Indices[index + 1]],
+                        uvs is null ? null : uvs[primitive.Indices[index + 2]],
+                        shade);
                 }
 
                 if (options.Wireframe)
@@ -201,7 +218,12 @@ public sealed class ScenePreviewRenderer
         ScreenVertex a,
         ScreenVertex b,
         ScreenVertex c,
-        Rgba32 color)
+        Rgba32 color,
+        RgbaImage? texture = null,
+        Vector2? uvA = null,
+        Vector2? uvB = null,
+        Vector2? uvC = null,
+        float shade = 1)
     {
         float area = Edge(a.X, a.Y, b.X, b.Y, c.X, c.Y);
         if (MathF.Abs(area) < 1e-5f)
@@ -236,7 +258,20 @@ public sealed class ScenePreviewRenderer
                 }
 
                 depth[pixelIndex] = z;
-                image.SetPixel(x, y, color);
+                Rgba32 outputColor = color;
+                if (texture is not null && uvA is not null && uvB is not null && uvC is not null)
+                {
+                    Vector2 uv = (uvA.Value * weightA) +
+                        (uvB.Value * weightB) +
+                        (uvC.Value * weightC);
+                    float wrappedU = uv.X - MathF.Floor(uv.X);
+                    float wrappedV = uv.Y - MathF.Floor(uv.Y);
+                    int textureX = Math.Clamp((int)(wrappedU * texture.Width), 0, texture.Width - 1);
+                    int textureY = Math.Clamp((int)(wrappedV * texture.Height), 0, texture.Height - 1);
+                    outputColor = ScaleColor(texture.GetPixel(textureX, textureY), shade);
+                }
+
+                image.SetPixel(x, y, outputColor);
             }
         }
     }

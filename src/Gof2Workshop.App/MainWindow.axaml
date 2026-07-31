@@ -8,10 +8,14 @@
     Height="920"
     MinWidth="900"
     MinHeight="600"
+    DragDrop.AllowDrop="True"
+    DragDrop.DragOver="OnDragOver"
+    DragDrop.Drop="OnDrop"
     WindowStartupLocation="CenterScreen">
   <Window.KeyBindings>
     <KeyBinding Gesture="Ctrl+N" Command="{Binding NewWorkspaceCommand}" />
     <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenWorkspaceCommand}" />
+    <KeyBinding Gesture="Ctrl+Alt+O" Command="{Binding OpenFilesCommand}" />
     <KeyBinding Gesture="Ctrl+Shift+O" Command="{Binding SelectGameFolderCommand}" />
     <KeyBinding Gesture="Ctrl+P" Command="{Binding SetActivityCommand}" CommandParameter="Search" />
     <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseDocumentCommand}" />
@@ -29,6 +33,8 @@
       <MenuItem Header="_File">
         <MenuItem Header="_New Workspace…" InputGesture="Ctrl+N" Command="{Binding NewWorkspaceCommand}" />
         <MenuItem Header="_Open Workspace…" InputGesture="Ctrl+O" Command="{Binding OpenWorkspaceCommand}" />
+        <MenuItem Header="Open _Files for Quick Inspect…" InputGesture="Ctrl+Alt+O" Command="{Binding OpenFilesCommand}" />
+        <MenuItem Header="Create Workspace from Quick Inspect Files…" Command="{Binding CreateWorkspaceFromInspectionCommand}" />
         <MenuItem Header="_Close Workspace" Command="{Binding CloseWorkspaceCommand}" />
         <Separator />
         <MenuItem Header="Select _Game Folder…" InputGesture="Ctrl+Shift+O" Command="{Binding SelectGameFolderCommand}" />
@@ -57,6 +63,7 @@
       </MenuItem>
       <MenuItem Header="_Asset">
         <MenuItem Header="_Open Asset" Command="{Binding OpenAssetCommand}" />
+        <MenuItem Header="_Import Custom Model…" Command="{Binding ImportModelCommand}" />
         <MenuItem Header="_Add to Mod" Command="{Binding AddToModCommand}" />
         <MenuItem Header="_Stage Replacement…" Command="{Binding ReplaceInModCommand}" />
         <Separator />
@@ -75,6 +82,13 @@
         <MenuItem Header="_Settings" Command="{Binding SetActivityCommand}" CommandParameter="Settings" />
       </MenuItem>
       <MenuItem Header="_Help">
+        <MenuItem Header="_Tutorials">
+          <MenuItem Header="Quick inspection" Command="{Binding StartTutorialCommand}" CommandParameter="quick-inspect" />
+          <MenuItem Header="Texture mod" Command="{Binding StartTutorialCommand}" CommandParameter="texture-mod" />
+          <MenuItem Header="Model import" Command="{Binding StartTutorialCommand}" CommandParameter="model-import" />
+          <MenuItem Header="Animation inspection" Command="{Binding StartTutorialCommand}" CommandParameter="animation-round-trip" />
+          <MenuItem Header="Structured language data" Command="{Binding StartTutorialCommand}" CommandParameter="structured-language" />
+        </MenuItem>
         <MenuItem Header="_Documentation / Research" Command="{Binding SetActivityCommand}" CommandParameter="Documentation" />
         <Separator />
         <MenuItem Header="_About" Command="{Binding AboutCommand}" />
@@ -175,6 +189,29 @@
         <TextBlock Grid.Column="6" Text="{Binding ScanStatus}" />
         <ProgressBar Grid.Column="7" Width="70" Height="4" IsIndeterminate="True" IsVisible="{Binding IsScanning}" />
         <TextBlock Grid.Column="8" Text="{Binding ActiveFileType}" />
+      </Grid>
+    </Border>
+
+    <Border Grid.RowSpan="6" Width="390" Margin="18" Padding="16"
+            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+            IsVisible="{Binding TutorialVisible}"
+            Background="#F2212731" BorderBrush="#5AA9E6" BorderThickness="1"
+            CornerRadius="6" BoxShadow="0 6 18 0 #90000000">
+      <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="7">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock FontSize="11" Foreground="#8CCBFF" FontWeight="SemiBold"
+                     Text="{Binding TutorialTitle}" />
+          <TextBlock Grid.Column="1" FontSize="11" Opacity="0.72" Text="{Binding TutorialProgress}" />
+        </Grid>
+        <TextBlock Grid.Row="1" FontSize="17" FontWeight="SemiBold" Text="{Binding TutorialStepTitle}" />
+        <TextBlock Grid.Row="2" TextWrapping="Wrap" Text="{Binding TutorialInstruction}" />
+        <TextBlock Grid.Row="3" FontSize="11" Foreground="#A9C7DD" Text="{Binding TutorialTarget}" />
+        <Grid Grid.Row="4" ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="6">
+          <Button Content="Back" Command="{Binding TutorialBackCommand}" />
+          <Button Grid.Column="1" Content="Restart" Command="{Binding TutorialRestartCommand}" />
+          <Button Grid.Column="3" Content="Skip" Command="{Binding TutorialSkipCommand}" />
+          <Button Grid.Column="4" Content="Next" Command="{Binding TutorialNextCommand}" />
+        </Grid>
       </Grid>
     </Border>
   </Grid>

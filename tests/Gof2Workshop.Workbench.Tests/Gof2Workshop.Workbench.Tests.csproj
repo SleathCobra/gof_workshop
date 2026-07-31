@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Gof2Workshop.Core\Gof2Workshop.Core.csproj" />
+    <ProjectReference Include="..\..\src\Gof2Workshop.App\Gof2Workshop.App.csproj" />
     <ProjectReference Include="..\..\src\Gof2Workshop.Workbench\Gof2Workshop.Workbench.csproj" />
   </ItemGroup>
 

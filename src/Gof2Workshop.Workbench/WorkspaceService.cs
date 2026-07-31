@@ -254,6 +254,8 @@ public sealed class ApplicationStateService
 
             state.FormatVersion = ApplicationState.CurrentFormatVersion;
             state.RecentWorkspaces ??= [];
+            state.RecentStandaloneFiles ??= [];
+            state.TutorialProgress ??= new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             state.Window ??= new WindowPlacementState();
             state.Window.Normalize();
             return new ApplicationStateLoadResult(state, null);

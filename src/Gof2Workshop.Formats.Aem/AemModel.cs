@@ -85,7 +85,8 @@ public sealed record AemSubmesh(
     AemPrimitiveTopology SourceTopology = AemPrimitiveTopology.Triangles,
     bool IsTransparent = false,
     ushort[]? SourceIndices = null,
-    ushort[]? SourceStripLengths = null);
+    ushort[]? SourceStripLengths = null,
+    bool HasLegacyTransparencyByte = true);
 
 public sealed record AemFile(
     string? SourcePath,

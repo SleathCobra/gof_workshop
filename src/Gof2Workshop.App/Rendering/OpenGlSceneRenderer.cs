@@ -41,6 +41,7 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
 
     private readonly GlInterface gl;
     private readonly GlApiExtra extra;
+    private readonly bool requiresVertexArray;
     private readonly List<MeshResource> meshes = [];
     private readonly Dictionary<string, int> textures =
         new(StringComparer.OrdinalIgnoreCase);
@@ -60,6 +61,8 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
     {
         this.gl = gl;
         extra = new GlApiExtra(gl);
+        requiresVertexArray = version.Type == GlProfileType.OpenGL &&
+            (version.Major > 3 || (version.Major == 3 && version.Minor >= 2));
         program = CreateProgram(version);
         matrixLocation = RequireUniform("uMvp");
         baseColorLocation = RequireUniform("uBaseColor");
@@ -71,13 +74,17 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
 
         int maximumTextureSize = extra.GetInteger(MaxTextureSize);
         string api = $"{version.Type} {version.Major}.{version.Minor}";
+        OpenGlShaderSources sources = OpenGlShaderSourceFactory.Create(version);
         Info = new SceneViewportRendererInfo(
             "Avalonia OpenGL",
             api,
             gl.Vendor ?? "Unknown vendor",
             gl.Renderer ?? "Unknown renderer",
             maximumTextureSize,
-            HardwareAccelerated: true);
+            HardwareAccelerated: true,
+            ContextProfile: requiresVertexArray ? "Desktop core-compatible" : version.Type.ToString(),
+            ShadingLanguageVersion: sources.VersionDirective,
+            ShaderDialect: sources.Dialect);
     }
 
     public SceneViewportRendererInfo Info { get; }
@@ -207,10 +214,13 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
         }
 
         gl.BindBuffer(ArrayBuffer, 0);
-        gl.BindBuffer(ElementArrayBuffer, 0);
         if (gl.IsBindVertexArrayAvailable)
         {
             gl.BindVertexArray(0);
+        }
+        else
+        {
+            gl.BindBuffer(ElementArrayBuffer, 0);
         }
         gl.UseProgram(0);
         gl.Flush();
@@ -279,6 +289,11 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
             vertexArray = gl.GenVertexArray();
             gl.BindVertexArray(vertexArray);
         }
+        else if (requiresVertexArray)
+        {
+            throw new PlatformNotSupportedException(
+                "This desktop OpenGL core context requires vertex array objects, but the driver did not expose glGenVertexArrays/glBindVertexArray.");
+        }
 
         int vertexBuffer = UploadBuffer(ArrayBuffer, vertices);
         int indexBuffer = UploadBuffer(ElementArrayBuffer, primitive.Indices);
@@ -333,10 +348,10 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
         }
         gl.BindBuffer(ArrayBuffer, mesh.VertexBuffer);
         gl.BindBuffer(ElementArrayBuffer, mesh.IndexBuffer);
-        if (mesh.VertexArray == 0)
-        {
-            SetVertexLayout();
-        }
+        // Overlay draws intentionally reuse the VAO with alternate line buffers.
+        // Restore the primary mesh layout for every mesh draw; this updates VAO
+        // state only and does not re-upload geometry.
+        SetVertexLayout();
     }
 
     private void SetVertexLayout()
@@ -372,7 +387,9 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
 
     private int CreateProgram(GlVersion version)
     {
-        (string vertexSource, string fragmentSource) = ShaderSources.Create(version);
+        OpenGlShaderSources sources = OpenGlShaderSourceFactory.Create(version);
+        string vertexSource = sources.Vertex;
+        string fragmentSource = sources.Fragment;
         int vertex = gl.CreateShader(VertexShader);
         int fragment = gl.CreateShader(FragmentShader);
         try
@@ -742,31 +759,9 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
         int PivotVertexCount,
         int BoundVertexCount);
 
-    private static class ShaderSources
+    private static class ShaderBodies
     {
-        public static (string Vertex, string Fragment) Create(GlVersion version)
-        {
-            bool es = version.Type == GlProfileType.OpenGLES;
-            bool modern = version.Major >= 3;
-            if (modern)
-            {
-                string header = es
-                    ? "#version 300 es\nprecision highp float;\n"
-                    : "#version 330 core\n";
-                return (
-                    header + ModernVertex,
-                    header + ModernFragment);
-            }
-
-            string legacyHeader = es
-                ? "#version 100\nprecision highp float;\n"
-                : "#version 120\n";
-            return (
-                legacyHeader + LegacyVertex,
-                legacyHeader + LegacyFragment);
-        }
-
-        private const string ModernVertex = """
+        internal const string ModernVertex = """
             in vec3 aPosition;
             in vec3 aNormal;
             in vec2 aUv;
@@ -784,7 +779,7 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
             }
             """;
 
-        private const string ModernFragment = """
+        internal const string ModernFragment = """
             in vec3 vNormal;
             in vec2 vUv;
             in vec4 vAuxiliary;
@@ -812,7 +807,7 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
             }
             """;
 
-        private const string LegacyVertex = """
+        internal const string LegacyVertex = """
             attribute vec3 aPosition;
             attribute vec3 aNormal;
             attribute vec2 aUv;
@@ -830,7 +825,7 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
             }
             """;
 
-        private const string LegacyFragment = """
+        internal const string LegacyFragment = """
             varying vec3 vNormal;
             varying vec2 vUv;
             varying vec4 vAuxiliary;
@@ -857,6 +852,10 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
             }
             """;
     }
+
+    public static (string Vertex, string Fragment) GetShaderBodies(bool modern) => modern
+        ? (ShaderBodies.ModernVertex, ShaderBodies.ModernFragment)
+        : (ShaderBodies.LegacyVertex, ShaderBodies.LegacyFragment);
 
     private sealed class GlApiExtra
     {
@@ -947,5 +946,59 @@ public sealed class OpenGlSceneRenderer : ISceneViewportRenderer
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         private delegate void GetIntegerDelegate(int name, IntPtr value);
+    }
+}
+
+public sealed record OpenGlShaderSources(
+    string Vertex,
+    string Fragment,
+    string VersionDirective,
+    string Dialect);
+
+public static class OpenGlShaderSourceFactory
+{
+    public static OpenGlShaderSources Create(GlVersion version)
+    {
+        bool es = version.Type == GlProfileType.OpenGLES;
+        bool modern = version.Major >= 3;
+        string header;
+        string dialect;
+        if (modern && es)
+        {
+            header = "#version 300 es\nprecision highp float;\n";
+            dialect = "GLSL ES 3.00";
+        }
+        else if (modern)
+        {
+            // macOS commonly provides a 3.2 core context whose maximum GLSL
+            // version is 1.50. A hard-coded 3.30 shader fails compilation there.
+            int glsl = version.Major > 3 || version.Minor >= 3
+                ? 330
+                : version.Minor switch
+                {
+                    2 => 150,
+                    1 => 140,
+                    _ => 130,
+                };
+            header = $"#version {glsl}{(glsl >= 150 ? " core" : string.Empty)}\n";
+            dialect = $"Desktop GLSL {glsl / 100}.{glsl % 100:D2}";
+        }
+        else if (es)
+        {
+            header = "#version 100\nprecision highp float;\n";
+            dialect = "GLSL ES 1.00";
+        }
+        else
+        {
+            header = "#version 120\n";
+            dialect = "Desktop GLSL 1.20";
+        }
+
+        (string vertex, string fragment) = OpenGlSceneRenderer.GetShaderBodies(modern);
+        return new OpenGlShaderSources(
+            header + vertex,
+            header + fragment,
+            header.Split('\n', StringSplitOptions.RemoveEmptyEntries)[0],
+            dialect);
     }
 }

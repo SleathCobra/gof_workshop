@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Gof2Workshop.Import\Gof2Workshop.Import.csproj" />
     <PackageReference Include="MSTest" Version="4.3.2" />
   </ItemGroup>
 

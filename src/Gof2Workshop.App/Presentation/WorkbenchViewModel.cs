@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using Gof2Workshop.App.Documents;
 using Gof2Workshop.Binary;
 using Gof2Workshop.Core;
+using Gof2Workshop.Import;
 using Gof2Workshop.Workbench;
 
 namespace Gof2Workshop.App.Presentation;
@@ -20,8 +21,12 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     private readonly ModStagingService modStagingService;
     private readonly ModBuildService modBuildService;
     private readonly AssetRelationshipService relationshipService;
+    private readonly TutorialSession tutorialSession = new();
     private readonly List<IndexedAsset> gameAssets = [];
     private readonly List<IndexedAsset> modAssets = [];
+    private readonly List<IndexedAsset> inspectionAssets = [];
+    private InspectionCollection? inspectionCollection;
+    private WorkspaceDefinition? inspectionWorkspace;
     private ApplicationState applicationState = new();
     private WorkspaceDefinition? workspace;
     private AssetPlatformProfile selectedProfile = ProfileCatalog.Pc1X;
@@ -72,6 +77,10 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         relationshipService = new AssetRelationshipService();
 
         DocumentEditorRegistry registry = new();
+        registry.Register(new LanguageEditorProvider(
+            dialogs,
+            outputService,
+            problemService));
         registry.Register(new AeiEditorProvider(
             dialogs,
             outputService,
@@ -91,6 +100,11 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
 
         NewWorkspaceCommand = new AsyncRelayCommand(NewWorkspaceAsync);
         OpenWorkspaceCommand = new AsyncRelayCommand(OpenWorkspacePickerAsync);
+        OpenFilesCommand = new AsyncRelayCommand(OpenFilesPickerAsync);
+        CreateWorkspaceFromInspectionCommand = new AsyncRelayCommand(
+            CreateWorkspaceFromInspectionAsync,
+            () => inspectionAssets.Count > 0);
+        ImportModelCommand = new AsyncRelayCommand(ImportModelAsync);
         CloseWorkspaceCommand = new AsyncRelayCommand(CloseWorkspaceAsync, () => Workspace is not null);
         SelectGameFolderCommand = new AsyncRelayCommand(
             SelectGameFolderAsync,
@@ -165,6 +179,11 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
                 ActiveBottomTab = parameter as string ?? "Output";
                 BottomVisible = true;
             });
+        StartTutorialCommand = new RelayCommand(StartTutorial);
+        TutorialNextCommand = new RelayCommand(TutorialNext, () => tutorialSession.IsActive);
+        TutorialBackCommand = new RelayCommand(TutorialBack, () => tutorialSession.CanGoBack);
+        TutorialRestartCommand = new RelayCommand(TutorialRestart, () => tutorialSession.IsActive);
+        TutorialSkipCommand = new RelayCommand(TutorialSkip, () => tutorialSession.IsActive);
     }
 
     public ObservableCollection<IDocument> Documents => documents;
@@ -174,6 +193,8 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     public ObservableCollection<AssetTreeNode> GameAssetTree { get; } = [];
 
     public ObservableCollection<AssetTreeNode> ModAssetTree { get; } = [];
+
+    public ObservableCollection<AssetTreeNode> InspectionAssetTree { get; } = [];
 
     public ObservableCollection<ProblemEntry> Problems { get; } = [];
 
@@ -187,7 +208,9 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
 
     public IReadOnlyList<AssetPlatformProfile> Profiles => ProfileCatalog.All;
 
-    public IReadOnlyList<string> KindFilters { get; } = ["All", "AEI", "AEM"];
+    public IReadOnlyList<string> KindFilters { get; } = ["All", "AEI", "AEM", "Language"];
+
+    public IReadOnlyList<TutorialDefinition> Tutorials => TutorialCatalog.All;
 
     public IReadOnlyList<string> SupportFilters { get; } =
         ["All", "Supported", "Unsupported", "Unknown"];
@@ -209,7 +232,8 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         }
     }
 
-    public string WorkspaceName => Workspace?.Name ?? "No workspace";
+    public string WorkspaceName => Workspace?.Name
+        ?? (inspectionAssets.Count > 0 ? "Quick Inspect" : "No workspace");
 
     public string WorkspacePath => Workspace?.FilePath ?? string.Empty;
 
@@ -224,7 +248,18 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         get => selectedProfile;
         set
         {
-            if (SetProperty(ref selectedProfile, value) && Workspace is not null)
+            if (!SetProperty(ref selectedProfile, value))
+            {
+                return;
+            }
+
+            inspectionCollection?.ChangeProfile(value);
+            if (inspectionWorkspace is not null)
+            {
+                inspectionWorkspace.ProfileId = value.Id;
+            }
+
+            if (Workspace is not null)
             {
                 Workspace.ProfileId = value.Id;
                 StatusMessage = $"Profile changed to {value.DisplayName}. Rescan recommended.";
@@ -478,6 +513,22 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
 
     public string ActiveFileType => SelectedDocument?.Kind ?? "Welcome";
 
+    public bool TutorialVisible => tutorialSession.IsActive;
+
+    public string TutorialTitle => tutorialSession.ActiveTutorial?.Title ?? string.Empty;
+
+    public string TutorialStepTitle => tutorialSession.CurrentStep?.Title ?? string.Empty;
+
+    public string TutorialInstruction => tutorialSession.CurrentStep?.Instruction ?? string.Empty;
+
+    public string TutorialTarget => tutorialSession.CurrentStep is null
+        ? string.Empty
+        : $"Focus: {tutorialSession.CurrentStep.Target}";
+
+    public string TutorialProgress => tutorialSession.ActiveTutorial is null
+        ? string.Empty
+        : $"Step {tutorialSession.StepIndex + 1} of {tutorialSession.ActiveTutorial.Steps.Count}";
+
     public string AssetDetails => activeInspectorSource?.AssetDetails ??
         (SelectedGameAsset is null ? "No asset selected." : FormatAssetDetails(SelectedGameAsset));
 
@@ -488,6 +539,12 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     public System.Windows.Input.ICommand NewWorkspaceCommand { get; }
 
     public System.Windows.Input.ICommand OpenWorkspaceCommand { get; }
+
+    public System.Windows.Input.ICommand OpenFilesCommand { get; }
+
+    public System.Windows.Input.ICommand CreateWorkspaceFromInspectionCommand { get; }
+
+    public System.Windows.Input.ICommand ImportModelCommand { get; }
 
     public System.Windows.Input.ICommand CloseWorkspaceCommand { get; }
 
@@ -551,6 +608,16 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
 
     public System.Windows.Input.ICommand SetBottomTabCommand { get; }
 
+    public System.Windows.Input.ICommand StartTutorialCommand { get; }
+
+    public System.Windows.Input.ICommand TutorialNextCommand { get; }
+
+    public System.Windows.Input.ICommand TutorialBackCommand { get; }
+
+    public System.Windows.Input.ICommand TutorialRestartCommand { get; }
+
+    public System.Windows.Input.ICommand TutorialSkipCommand { get; }
+
     public async Task InitializeAsync(IReadOnlyList<string> arguments)
     {
         ApplicationStateLoadResult stateResult = await applicationStateService.LoadAsync();
@@ -562,7 +629,13 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
 
         string? workspaceArgument = GetOption(arguments, "--workspace");
         string? assetRootArgument = GetOption(arguments, "--asset-root");
-        string? openArgument = GetOption(arguments, "--open");
+        string? profileArgument = GetOption(arguments, "--profile");
+        string? tutorialArgument = GetOption(arguments, "--tutorial");
+        List<string> openArguments = GetOpenPaths(arguments);
+        if (profileArgument is not null)
+        {
+            SelectedProfile = ProfileCatalog.Resolve(profileArgument);
+        }
         string? workspaceToOpen = workspaceArgument ??
             (applicationState.LastWorkspace is not null &&
              File.Exists(applicationState.LastWorkspace)
@@ -596,18 +669,14 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
             await RescanAsync();
         }
 
-        if (openArgument is not null && Workspace is not null)
+        if (openArguments.Count > 0)
         {
-            string fullOpen = Path.GetFullPath(openArgument);
-            IndexedAsset? asset = gameAssets.Concat(modAssets).FirstOrDefault(
-                value => string.Equals(
-                    value.FullPath,
-                    fullOpen,
-                    StringComparison.OrdinalIgnoreCase));
-            if (asset is not null)
-            {
-                await OpenAssetAsync(asset);
-            }
+            await OpenStandalonePathsAsync(openArguments);
+        }
+
+        if (!string.IsNullOrWhiteSpace(tutorialArgument))
+        {
+            StartTutorial(tutorialArgument);
         }
     }
 
@@ -707,6 +776,134 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         {
             await OpenWorkspaceAsync(path);
         }
+    }
+
+    private async Task OpenFilesPickerAsync()
+    {
+        IReadOnlyList<string> paths = await dialogs.PickAssetFilesAsync("Quick Inspect Files");
+        if (paths.Count > 0)
+        {
+            await OpenStandalonePathsAsync(paths);
+        }
+    }
+
+    private async Task CreateWorkspaceFromInspectionAsync()
+    {
+        if (inspectionAssets.Count == 0)
+        {
+            return;
+        }
+
+        string? directory = await dialogs.PickFolderAsync(
+            "Create Workspace from Quick Inspect Files");
+        if (directory is null)
+        {
+            return;
+        }
+
+        string fullDirectory = Path.GetFullPath(directory);
+        foreach (string corpusName in new[]
+        {
+            "data", "android_data", "ios_data", "macos_data", "ios2_data", "ios_data2",
+        })
+        {
+            string corpus = Path.Combine(Environment.CurrentDirectory, corpusName);
+            if (Directory.Exists(corpus) && PathPolicy.IsWithin(fullDirectory, corpus))
+            {
+                problemService.Add(new ProblemEntry(
+                    ProblemSeverity.Error,
+                    Path.GetFileName(Path.TrimEndingDirectorySeparator(fullDirectory)),
+                    fullDirectory,
+                    "Workspace",
+                    "The selected workspace folder is beneath a read-only compatibility corpus.",
+                    null,
+                    "workspace path",
+                    "Choose a separate user-owned folder."));
+                return;
+            }
+        }
+
+        WorkspaceDefinition created = await workspaceService.CreateAsync(
+            fullDirectory,
+            Path.GetFileName(Path.TrimEndingDirectorySeparator(fullDirectory)),
+            SelectedProfile.Id);
+        string modRoot = workspaceService.ResolveModPath(created, created.ModRoot);
+        foreach (IndexedAsset source in inspectionAssets)
+        {
+            string category = source.Kind switch
+            {
+                AssetKind.Aei => Path.Combine("Assets", "Textures"),
+                AssetKind.Aem => Path.Combine("Assets", "Models"),
+                AssetKind.Language => Path.Combine("Assets", "Data"),
+                _ => Path.Combine("Assets", "Other"),
+            };
+            string targetDirectory = Path.Combine(modRoot, category);
+            Directory.CreateDirectory(targetDirectory);
+            string target = GetUnusedDestination(targetDirectory, source.FileName);
+            File.Copy(source.FullPath, target, overwrite: false);
+        }
+
+        Workspace = created;
+        AddRecentWorkspace(created.FilePath!);
+        ApplyWorkspaceLayout(created.Layout);
+        await ScanModAssetsAsync();
+        outputService.Write(
+            OutputLevel.Information,
+            "Quick Inspect",
+            $"Created '{created.Name}' with {inspectionAssets.Count:N0} user-owned asset copies. Original inspection files remain unchanged.");
+        StatusMessage = "Quick Inspect collection copied into a new workspace";
+    }
+
+    private static string GetUnusedDestination(string directory, string fileName)
+    {
+        string stem = Path.GetFileNameWithoutExtension(fileName);
+        string extension = Path.GetExtension(fileName);
+        string candidate = Path.Combine(directory, fileName);
+        for (int suffix = 2; File.Exists(candidate); suffix++)
+        {
+            candidate = Path.Combine(directory, $"{stem}-{suffix}{extension}");
+        }
+
+        return candidate;
+    }
+
+    public async Task OpenStandalonePathsAsync(
+        IEnumerable<string> paths,
+        CancellationToken cancellationToken = default)
+    {
+        inspectionCollection ??= new InspectionCollection(SelectedProfile);
+        inspectionWorkspace ??= inspectionCollection.CreateTransientWorkspace();
+        InspectionCollectionUpdate update = await inspectionCollection.AddAsync(paths, cancellationToken);
+        foreach (IndexedAsset asset in update.AddedAssets)
+        {
+            inspectionAssets.Add(asset);
+            AddRecentStandaloneFile(asset.FullPath);
+        }
+
+        problemService.AddRange(update.Problems);
+        relationshipService.UpdateAssets(gameAssets.Concat(modAssets).Concat(inspectionAssets));
+        RebuildTree(InspectionAssetTree, inspectionAssets);
+        RebuildFormats();
+        RefreshSearch();
+        RaiseCommandStates();
+        OnPropertyChanged(nameof(WorkspaceName));
+        if (update.AddedAssets.Count == 0)
+        {
+            StatusMessage = update.CompanionFiles.Count > 0
+                ? $"Added {update.CompanionFiles.Count:N0} companion files; add an AEI or AEM to inspect."
+                : "No new supported inspection files were added.";
+            return;
+        }
+
+        foreach (IndexedAsset asset in update.AddedAssets)
+        {
+            await OpenAssetAsync(asset);
+        }
+
+        outputService.Write(
+            OutputLevel.Information,
+            "Quick Inspect",
+            $"Added {update.AddedAssets.Count:N0} assets and {update.CompanionFiles.Count:N0} companion files without creating a workspace.");
     }
 
     private async Task OpenWorkspaceAsync(string path)
@@ -857,7 +1054,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
                 token);
             gameAssets.Clear();
             gameAssets.AddRange(result.Assets);
-            relationshipService.UpdateAssets(gameAssets.Concat(modAssets));
+            relationshipService.UpdateAssets(gameAssets.Concat(modAssets).Concat(inspectionAssets));
             problemService.AddRange(result.Problems);
             RebuildTree(GameAssetTree, gameAssets);
             RebuildFormats();
@@ -917,7 +1114,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
             SelectedProfile);
         modAssets.Clear();
         modAssets.AddRange(result.Assets);
-        relationshipService.UpdateAssets(gameAssets.Concat(modAssets));
+        relationshipService.UpdateAssets(gameAssets.Concat(modAssets).Concat(inspectionAssets));
         RebuildTree(ModAssetTree, modAssets);
     }
 
@@ -937,14 +1134,18 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
 
     private async Task OpenAssetAsync(IndexedAsset asset)
     {
-        if (Workspace is null)
+        WorkspaceDefinition? contextWorkspace = inspectionAssets.Any(candidate =>
+                string.Equals(candidate.StableKey, asset.StableKey, StringComparison.OrdinalIgnoreCase))
+            ? inspectionWorkspace
+            : Workspace ?? inspectionWorkspace;
+        if (contextWorkspace is null)
         {
             return;
         }
 
         try
         {
-            IDocument document = await documentManager.OpenAsync(asset, Workspace);
+            IDocument document = await documentManager.OpenAsync(asset, contextWorkspace);
             SyncDocuments();
             SelectedDocument = document;
             AddRecentAsset(asset.RelativePath);
@@ -1400,7 +1601,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
             return;
         }
 
-        IndexedAsset? asset = gameAssets.Concat(modAssets).FirstOrDefault(
+        IndexedAsset? asset = gameAssets.Concat(modAssets).Concat(inspectionAssets).FirstOrDefault(
             value => string.Equals(
                 value.FullPath,
                 problem.AssetPath,
@@ -1439,6 +1640,99 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         ShowWelcome();
     }
 
+    private void StartTutorial(object? parameter)
+    {
+        TutorialDefinition tutorial = parameter switch
+        {
+            TutorialDefinition definition => definition,
+            string id => TutorialCatalog.Resolve(id),
+            _ => TutorialCatalog.QuickInspect,
+        };
+        applicationState.TutorialProgress.TryGetValue(tutorial.Id, out int restoredStep);
+        tutorialSession.Start(tutorial, restoredStep);
+        outputService.Write(
+            OutputLevel.Information,
+            "Tutorial",
+            $"Started '{tutorial.Title}' at step {tutorialSession.StepIndex + 1}.");
+        RaiseTutorialState();
+    }
+
+    private void TutorialNext()
+    {
+        if (tutorialSession.ActiveTutorial is null)
+        {
+            return;
+        }
+
+        string id = tutorialSession.ActiveTutorial.Id;
+        if (tutorialSession.IsLastStep)
+        {
+            applicationState.TutorialProgress[id] = 0;
+            outputService.Write(OutputLevel.Information, "Tutorial", "Tutorial completed.");
+            tutorialSession.Stop();
+        }
+        else
+        {
+            tutorialSession.Next();
+            applicationState.TutorialProgress[id] = tutorialSession.StepIndex;
+        }
+
+        RaiseTutorialState();
+    }
+
+    private void TutorialBack()
+    {
+        if (tutorialSession.Back() && tutorialSession.ActiveTutorial is not null)
+        {
+            applicationState.TutorialProgress[tutorialSession.ActiveTutorial.Id] = tutorialSession.StepIndex;
+        }
+
+        RaiseTutorialState();
+    }
+
+    private void TutorialRestart()
+    {
+        tutorialSession.Restart();
+        if (tutorialSession.ActiveTutorial is not null)
+        {
+            applicationState.TutorialProgress[tutorialSession.ActiveTutorial.Id] = 0;
+        }
+
+        RaiseTutorialState();
+    }
+
+    private void TutorialSkip()
+    {
+        if (tutorialSession.ActiveTutorial is not null)
+        {
+            applicationState.TutorialProgress[tutorialSession.ActiveTutorial.Id] = tutorialSession.StepIndex;
+            outputService.Write(OutputLevel.Information, "Tutorial", "Tutorial dismissed; progress was retained.");
+        }
+
+        tutorialSession.Stop();
+        RaiseTutorialState();
+    }
+
+    private void RaiseTutorialState()
+    {
+        OnPropertyChanged(nameof(TutorialVisible));
+        OnPropertyChanged(nameof(TutorialTitle));
+        OnPropertyChanged(nameof(TutorialStepTitle));
+        OnPropertyChanged(nameof(TutorialInstruction));
+        OnPropertyChanged(nameof(TutorialTarget));
+        OnPropertyChanged(nameof(TutorialProgress));
+        foreach (System.Windows.Input.ICommand command in new[]
+        {
+            TutorialNextCommand,
+            TutorialBackCommand,
+            TutorialRestartCommand,
+            TutorialSkipCommand,
+        })
+        {
+            ((RelayCommand)command).RaiseCanExecuteChanged();
+        }
+    }
+
     private void ShowWelcome()
     {
         IDocument? existing = Documents.FirstOrDefault(document => document.Id == "welcome");
@@ -1455,6 +1749,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         {
             "AEI" => AssetKind.Aei,
             "AEM" => AssetKind.Aem,
+            "Language" => AssetKind.Language,
             _ => null,
         };
         AssetSupport? support = SupportFilter switch
@@ -1466,7 +1761,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         };
         string? format = FormatFilter == "All" ? null : FormatFilter;
         IReadOnlyList<IndexedAsset> results = AssetSearchService.Search(
-            gameAssets,
+            gameAssets.Concat(modAssets).Concat(inspectionAssets),
             new AssetSearchQuery(SearchText, kind, support, format));
         SearchResults.Clear();
         foreach (IndexedAsset result in results)
@@ -1480,7 +1775,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         string previousFormat = FormatFilter;
         FormatFilters.Clear();
         FormatFilters.Add("All");
-        foreach (string value in gameAssets
+        foreach (string value in gameAssets.Concat(modAssets).Concat(inspectionAssets)
             .Select(asset => asset.Version ?? asset.Classification)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
@@ -1729,6 +2024,118 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         applicationState.LastWorkspace = path;
     }
 
+    private async Task ImportModelAsync()
+    {
+        IReadOnlyList<string> selected = await dialogs.PickAssetFilesAsync(
+            "Import glTF, GLB, or OBJ model");
+        string? source = selected.FirstOrDefault(path => Path.GetExtension(path).Equals(".gltf", StringComparison.OrdinalIgnoreCase) ||
+            Path.GetExtension(path).Equals(".glb", StringComparison.OrdinalIgnoreCase) ||
+            Path.GetExtension(path).Equals(".obj", StringComparison.OrdinalIgnoreCase));
+        if (source is null)
+        {
+            return;
+        }
+
+        try
+        {
+            StatusMessage = $"Validating {Path.GetFileName(source)} for AEM v4…";
+            AemAuthoringResult result = await Task.Run(() =>
+            {
+                ImportedScene imported = Path.GetExtension(source).ToLowerInvariant() switch
+                {
+                    ".gltf" or ".glb" => new GltfModelImporter().Import(source),
+                    ".obj" => new ObjModelImporter().Import(source),
+                    _ => throw new NotSupportedException("Choose glTF, GLB, or OBJ."),
+                };
+                return new AemAuthoringService().Author(imported);
+            });
+            string suggestedStart = Workspace is null
+                ? Path.GetDirectoryName(source) ?? Environment.CurrentDirectory
+                : Path.Combine(
+                    workspaceService.ResolveModPath(Workspace, Workspace.ModRoot),
+                    "Assets",
+                    "Models");
+            string? destination = await dialogs.SaveFileAsync(
+                "Save validated AEM v4 copy",
+                Path.GetFileNameWithoutExtension(source) + ".aem",
+                "aem",
+                suggestedStart);
+            if (destination is null)
+            {
+                return;
+            }
+
+            if (Workspace?.GameAssetRoot is string gameRoot && PathPolicy.IsWithin(destination, gameRoot))
+            {
+                throw new InvalidOperationException(
+                    "Custom models cannot be written beneath the immutable game asset root.");
+            }
+
+            await File.WriteAllBytesAsync(destination, result.Bytes);
+            outputService.Write(
+                OutputLevel.Information,
+                "Model import",
+                $"Authored AEM v4, reparsed, and scene-validated: {Path.GetFileName(destination)}; " +
+                $"{result.Reparsed.Submeshes.Count} submeshes; " +
+                $"{result.Reparsed.Submeshes.Sum(value => value.Positions.Length):N0} vertices.");
+            foreach (ModelImportDiagnostic diagnostic in result.Diagnostics)
+            {
+                outputService.Write(
+                    diagnostic.Severity == ModelImportSeverity.Error ? OutputLevel.Error :
+                        diagnostic.Severity == ModelImportSeverity.Warning ? OutputLevel.Warning : OutputLevel.Information,
+                    "Model import",
+                    $"{diagnostic.Code}: {diagnostic.Message}");
+            }
+
+            if (Workspace is not null &&
+                PathPolicy.IsWithin(destination, workspaceService.ResolveModPath(Workspace, Workspace.ModRoot)))
+            {
+                await ScanModAssetsAsync();
+                IndexedAsset? authored = modAssets.FirstOrDefault(asset => Path.GetFullPath(asset.FullPath).Equals(
+                    Path.GetFullPath(destination),
+                    StringComparison.OrdinalIgnoreCase));
+                if (authored is not null)
+                {
+                    await OpenAssetAsync(authored);
+                }
+            }
+            else
+            {
+                await OpenStandalonePathsAsync([destination]);
+            }
+
+            StatusMessage = "Custom AEM authored and validated";
+        }
+        catch (Exception exception) when (exception is ArgumentException or IOException or InvalidDataException or NotSupportedException or InvalidOperationException)
+        {
+            problemService.Add(new ProblemEntry(
+                ProblemSeverity.Error,
+                Path.GetFileName(source),
+                source,
+                "Model import",
+                exception.Message,
+                null,
+                "glTF/OBJ conversion",
+                "Use triangle topology, 16-bit representable counts, and supported vertex channels."));
+            outputService.Write(OutputLevel.Error, "Model import", exception.Message);
+            StatusMessage = "Model import failed validation";
+        }
+    }
+
+    private void AddRecentStandaloneFile(string path)
+    {
+        string fullPath = Path.GetFullPath(path);
+        applicationState.RecentStandaloneFiles.RemoveAll(
+            value => string.Equals(value, fullPath, StringComparison.OrdinalIgnoreCase));
+        applicationState.RecentStandaloneFiles.Insert(0, fullPath);
+        if (applicationState.RecentStandaloneFiles.Count > 20)
+        {
+            applicationState.RecentStandaloneFiles.RemoveRange(
+                20,
+                applicationState.RecentStandaloneFiles.Count - 20);
+        }
+    }
+
     private void AddRecentAsset(string relativePath)
     {
         if (Workspace is null)
@@ -1750,6 +2157,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         foreach (System.Windows.Input.ICommand command in new[]
         {
             CloseWorkspaceCommand,
+            CreateWorkspaceFromInspectionCommand,
             SelectGameFolderCommand,
             RescanCommand,
             CancelScanCommand,
@@ -1821,6 +2229,38 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         }
 
         return null;
+    }
+
+    private static List<string> GetOpenPaths(IReadOnlyList<string> arguments)
+    {
+        List<string> paths = [];
+        HashSet<string> optionsWithValues = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "--workspace",
+            "--asset-root",
+            "--profile",
+            "--tutorial",
+        };
+        for (int index = 0; index < arguments.Count; index++)
+        {
+            string argument = arguments[index];
+            if (string.Equals(argument, "--open", StringComparison.OrdinalIgnoreCase)
+                && index + 1 < arguments.Count)
+            {
+                paths.Add(arguments[++index]);
+            }
+            else if (optionsWithValues.Contains(argument) && index + 1 < arguments.Count)
+            {
+                index++;
+            }
+            else if (!argument.StartsWith("--", StringComparison.Ordinal)
+                && (File.Exists(argument) || Directory.Exists(argument)))
+            {
+                paths.Add(argument);
+            }
+        }
+
+        return paths;
     }
 
     private static string FormatAssetDetails(IndexedAsset asset)

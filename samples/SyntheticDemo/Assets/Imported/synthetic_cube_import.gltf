@@ -1,0 +1,157 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "Galaxy on Fire 2 Workshop"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "synthetic_cube",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "submesh_00",
+      "mesh": 0,
+      "translation": [
+        0,
+        0,
+        0
+      ],
+      "extras": {
+        "sourcePivot": [
+          0,
+          0,
+          0
+        ],
+        "boundingSphere": [
+          0,
+          0,
+          0,
+          6
+        ],
+        "sourceSubmeshIndex": 0
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "submesh_00",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "material_00",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.2,
+          0.62,
+          0.86,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.8
+      },
+      "doubleSided": true,
+      "alphaMode": "OPAQUE"
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "synthetic_cube_import.bin",
+      "byteLength": 328
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 96,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 96,
+      "byteLength": 96,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 192,
+      "byteLength": 64,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 256,
+      "byteLength": 72,
+      "target": 34963
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "byteOffset": 0,
+      "componentType": 5126,
+      "count": 8,
+      "type": "VEC3",
+      "min": [
+        -1,
+        -1,
+        -1
+      ],
+      "max": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "bufferView": 1,
+      "byteOffset": 0,
+      "componentType": 5126,
+      "count": 8,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 0,
+      "componentType": 5126,
+      "count": 8,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "byteOffset": 0,
+      "componentType": 5123,
+      "count": 36,
+      "type": "SCALAR",
+      "min": [
+        0
+      ],
+      "max": [
+        7
+      ]
+    }
+  ],
+  "extras": {
+    "sourceCoordinateConvention": "AEM source XYZ, float32, source winding retained.",
+    "normalizedCoordinateConvention": "Right-handed XYZ retained provisionally; glTF Y-up declaration; UV V converted to 1-V.",
+    "animationStatus": "No transform animation keys."
+  }
+}

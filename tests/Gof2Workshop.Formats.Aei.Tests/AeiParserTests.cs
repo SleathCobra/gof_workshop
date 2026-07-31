@@ -8,6 +8,16 @@ namespace Gof2Workshop.Formats.Aei.Tests;
 [TestClass]
 public sealed class AeiParserTests
 {
+    [TestMethod]
+    public void MacOsRawCubeMapIdentifierIsRecognizedWithoutMipFlagInference()
+    {
+        AeiFormatDescriptor descriptor = AeiFormatDescriptor.Identify(0xA6);
+
+        Assert.AreEqual(AeiCompressionFormat.UncompressedCubeMap, descriptor.Format);
+        Assert.IsFalse(descriptor.IsCompressed);
+        Assert.IsFalse(descriptor.HasMipmaps);
+    }
+
     private static readonly int[] ExpectedMipWidths = [4, 2, 1];
     private static readonly int[] ExpectedMipOffsets = [0, 8, 16];
 

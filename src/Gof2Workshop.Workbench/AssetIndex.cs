@@ -89,6 +89,33 @@ public sealed class AssetIndexService : IAssetIndex
             cancellationToken);
     }
 
+    public IndexedAsset ProbeFile(
+        string path,
+        AssetOwnership ownership,
+        AssetPlatformProfile profile,
+        string? relativePath = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(profile);
+        string fullPath = Path.GetFullPath(path);
+        FileInfo info = new(fullPath);
+        if (!info.Exists)
+        {
+            throw new FileNotFoundException("Inspection source file does not exist.", fullPath);
+        }
+
+        AssetKind kind = ParseKind(info.Extension)
+            ?? throw new NotSupportedException(
+                $"Quick Inspect cannot open '{info.Extension}' as an AEI/AEM document yet.");
+        return Probe(
+            fullPath,
+            relativePath ?? info.Name,
+            info,
+            kind,
+            ownership,
+            profile);
+    }
+
     private AssetIndexResult ScanCore(
         string fullRoot,
         AssetOwnership ownership,
@@ -210,9 +237,13 @@ public sealed class AssetIndexService : IAssetIndex
             FileOptions.SequentialScan);
         Span<byte> header = stackalloc byte[16];
         int read = stream.Read(header);
-        ProbeResult probe = kind == AssetKind.Aei
-            ? ProbeAei(header[..read], profile)
-            : ProbeAem(header[..read], profile);
+        ProbeResult probe = kind switch
+        {
+            AssetKind.Aei => ProbeAei(header[..read], profile),
+            AssetKind.Aem => ProbeAem(header[..read], profile),
+            AssetKind.Language => ProbeLanguage(path, header[..read]),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown asset kind."),
+        };
         return new IndexedAsset(
             path,
             relativePath,
@@ -340,7 +371,40 @@ public sealed class AssetIndexService : IAssetIndex
             ? AssetKind.Aei
             : extension.Equals(".aem", StringComparison.OrdinalIgnoreCase)
                 ? AssetKind.Aem
-                : null;
+                : extension.Equals(".lang", StringComparison.OrdinalIgnoreCase)
+                    ? AssetKind.Language
+                    : null;
+    }
+
+    private static ProbeResult ProbeLanguage(string path, ReadOnlySpan<byte> header)
+    {
+        if (header.Length < 2)
+        {
+            return new ProbeResult(
+                "Truncated language table",
+                "BE-length-UTF8",
+                AssetSupport.Unknown,
+                false,
+                "The first big-endian string-length prefix is truncated.");
+        }
+
+        ushort firstLength = System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(header);
+        if (firstLength > 0 && firstLength + 2 > new FileInfo(path).Length)
+        {
+            return new ProbeResult(
+                "Invalid language table",
+                "BE-length-UTF8",
+                AssetSupport.Unknown,
+                false,
+                "The first string exceeds the file bounds.");
+        }
+
+        return new ProbeResult(
+            "Big-endian UTF-8 language table",
+            "BE-length-UTF8",
+            AssetSupport.Supported,
+            true,
+            null);
     }
 
     private sealed record ProbeResult(

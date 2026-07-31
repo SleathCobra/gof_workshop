@@ -4,6 +4,7 @@ public enum AssetKind
 {
     Aei,
     Aem,
+    Language,
 }
 
 public sealed record AssetInventoryEntry(

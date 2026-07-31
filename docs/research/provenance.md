@@ -21,6 +21,13 @@ The Workshop is an independent MIT-licensed C# implementation. Local research re
 | AEM v1-v5 structural writing | Parsed field order and numeric encodings documented above | Independent writer reproduces every version fixture and all 752 parsed corpus files byte-for-byte; an edited v4 position reparses with the new value | Clean-room serialization from the independently reconstructed model; no reference implementation copied |
 | AEM-to-AEI material relationship | DeepOpen resource-loading behavior; local file/folder naming | High-resolution `*_diffuse.aei` matches were inspected on real textured models; every inferred result retains its strategy and confidence | External-resource behavior plus independently tested corpus heuristics; no material field is invented in AEM |
 | BC1/BC2/BC3 encoding | Public block-compression formats; BCnEncoder.Net API | Synthetic raw/BC1/BC2/BC3 reconstruction reparses and decodes; surface byte counts and container metadata are asserted | Third-party managed encoder behind a Workshop-owned interface, followed by independent decoder validation |
+| macOS AEI identifier `0xA6` | Local macOS corpus byte layout; cross-platform identifier inventory | Four 64 x 384 samples have exact raw RGBA payload accounting and cube-strip dimensions; all parse, decode, and reconstruct byte-for-byte | Independent sample analysis; no reference implementation used |
+| v2 AEM optional trailing transparency byte | Cross-platform sample offsets | A real v2 sample ends immediately after indices; bounded parsing and presence tracking reproduce both present and absent synthetic/real forms byte-for-byte | Independent sample analysis with explicit presence preservation |
+| Cross-platform identifier/version distribution | Five ignored local corpora | Streaming inventory, anonymized hashes, all-corpus parse/decode, and unchanged writer reconstruction | Behavioral testing; no proprietary bytes or paths recorded in source |
+| GOF2 language table framing | PC and Android `.lang` samples; runtime ordinal text lookup | All 22 available tables parse as complete `UInt16BE byteLength + UTF-8` sequences and reconstruct byte-for-byte; malformed UTF-8/truncation fixtures fail safely | Independent sample analysis and synthetic testing |
+| Mission storage model | DeepOpen runtime classes; GOF2HD Mission/Generator/LevelScript/GameRecord behavior; five-corpus filename/signature search | No standalone mission table found; two engine reconstructions independently show procedural side-mission creation and campaign-specific executable state logic | Behavioral evidence only; no mission writer or copied implementation |
+| glTF/OBJ to AEM authoring | Public glTF 2.0 and OBJ specifications; established AEM facts above | Synthetic glTF, GLB and OBJ import to AEM v4/v5, serialize, reparse, scene-convert and render with count/bounds checks | Independent bounded importer and neutral-scene conversion |
+| Desktop OpenGL core portability | OpenGL desktop core/ES API requirements; Avalonia context version | Shader variants compile in tests, VAO lifecycle is explicit, and Windows ANGLE remains validated; real macOS hardware validation is still pending | Public API behavior and diagnostics; no third-party renderer source |
 
 ## License boundary
 
@@ -30,6 +37,9 @@ The Workshop is an independent MIT-licensed C# implementation. Local research re
 - `AssetRipper.TextureDecoder` 2.6.2 is an MIT-licensed, managed, dependency-free runtime package used only for PVRTC/ETC/ATC block decoding. No source is copied into the Workshop; the adapter validates lengths and converts the package's generic RGBA values into the Workshop-owned image model.
 - `BCnEncoder.Net` 2.3.0 is MIT OR Unlicense, managed, and has no native dependency. It is used only for BC1/BC2/BC3 compression; AEI container reconstruction, mip layout, validation, and pixel comparison remain Workshop-owned.
 - BC decoding, PNG writing, software preview rendering, OBJ writing, and glTF writing remain independent C# implementations based on public format specifications and sample validation.
+- Avalonia.Browser is confined to the browser host. Parser, scene, validation, and exporter projects remain independent of Avalonia and browser APIs.
+- The model import implementation adds no third-party runtime dependency; it accepts a deliberately bounded glTF/GLB/OBJ subset from public specifications.
+- `Gof2Workshop.GameData` is a platform-neutral independent implementation and has no production package dependency.
 - Test-framework packages, if present, are development-only and are recorded in `docs/research/dependencies.md`.
 
 ## Contributor rule

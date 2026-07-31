@@ -1,5 +1,13 @@
 # Proprietary local research corpus. Never commit game assets or derivatives.
 /data/
+/android_data/
+/ios_data/
+/macos_data/
+/ios2_data/
+
+# Observed local aliases/research corpora. ios_data2 is GOF3D, not GOF2.
+/ios_data2/
+/tegrahd_data/
 
 # Generated previews, exports, inventories, and local compatibility evidence.
 /work/
@@ -18,4 +26,3 @@ TestResults/
 .idea/
 *.user
 *.suo
-

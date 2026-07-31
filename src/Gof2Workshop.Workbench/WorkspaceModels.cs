@@ -16,7 +16,7 @@ public sealed class WorkspaceDefinition
 
     public string ModVersion { get; set; } = "0.1.0";
 
-    public string ProfileId { get; set; } = "pc-1x";
+    public string ProfileId { get; set; } = "gof2-pc-1x";
 
     public string? GameAssetRoot { get; set; }
 
@@ -101,11 +101,16 @@ public sealed class ApplicationState
 
     public List<string> RecentWorkspaces { get; set; } = [];
 
+    public List<string> RecentStandaloneFiles { get; set; } = [];
+
     public string? LastWorkspace { get; set; }
 
     public WindowPlacementState Window { get; set; } = new();
 
     public string Theme { get; set; } = "System";
+
+    public Dictionary<string, int> TutorialProgress { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class WindowPlacementState

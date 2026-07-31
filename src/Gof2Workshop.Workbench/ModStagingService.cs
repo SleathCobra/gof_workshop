@@ -120,7 +120,13 @@ public sealed class ModStagingService : IModStagingService
             throw new FileNotFoundException("The replacement asset does not exist.", fullInput);
         }
 
-        string requiredExtension = source.Kind == AssetKind.Aei ? ".aei" : ".aem";
+        string requiredExtension = source.Kind switch
+        {
+            AssetKind.Aei => ".aei",
+            AssetKind.Aem => ".aem",
+            _ => throw new NotSupportedException(
+                $"{source.Kind} staging requires its structured-data edit session and cannot use binary replacement staging."),
+        };
         if (!Path.GetExtension(fullInput).Equals(requiredExtension, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException(
@@ -135,7 +141,12 @@ public sealed class ModStagingService : IModStagingService
             throw new InvalidOperationException("The mod workspace cannot be located beneath the game asset root.");
         }
 
-        string category = source.Kind == AssetKind.Aei ? "Textures" : "Models";
+        string category = source.Kind switch
+        {
+            AssetKind.Aei => "Textures",
+            AssetKind.Aem => "Models",
+            _ => throw new NotSupportedException($"No mod asset category is defined for {source.Kind}."),
+        };
         string safeRelative = NormalizeRelativeAssetPath(source.RelativePath);
         string destination = Path.GetFullPath(
             Path.Combine(modRoot, "Assets", category, safeRelative));

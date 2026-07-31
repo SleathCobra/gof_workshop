@@ -313,8 +313,19 @@ public sealed class AemParser
             }
         }
 
+        bool hasLegacyTransparencyByte = version > AemVersion.V2 || reader.Remaining > 0;
         bool isTransparent = version <= AemVersion.V2
+            && hasLegacyTransparencyByte
             && reader.ReadByte($"{prefix}.transparent", "mesh") != 0;
+        if (version <= AemVersion.V2 && !hasLegacyTransparencyByte)
+        {
+            diagnostics.Add(new FormatDiagnostic(
+                DiagnosticSeverity.Info,
+                "AEM_LEGACY_TRANSPARENCY_OMITTED",
+                $"AEM v{(int)version} ends after geometry and omits the optional transparency byte.",
+                reader.Position,
+                "mesh"));
+        }
         AemBoundingSphere sphere;
         AemAnimation animation;
         if (version == AemVersion.V3)
@@ -373,7 +384,8 @@ public sealed class AemParser
             topology,
             isTransparent,
             storedIndices,
-            sourceStripLengths);
+            sourceStripLengths,
+            hasLegacyTransparencyByte);
     }
 
     private static ushort[] ExpandTriangleStrips(
@@ -490,11 +502,28 @@ public sealed class AemParser
             cancellationToken);
 
         ushort vertexCount = reader.ReadUInt16($"{prefix}.vertexCount", "mesh");
-        if (vertexCount == 0 || vertexCount > options.MaximumVertexCountPerSubmesh)
+        if (vertexCount > options.MaximumVertexCountPerSubmesh)
         {
             throw reader.Corrupt(
                 $"{prefix}.vertexCount",
-                $"Vertex count {vertexCount} is outside 1..{options.MaximumVertexCountPerSubmesh}.");
+                $"Vertex count {vertexCount} exceeds {options.MaximumVertexCountPerSubmesh}.");
+        }
+
+        if (vertexCount == 0 && indexCount != 0)
+        {
+            throw reader.Corrupt(
+                $"{prefix}.vertexCount",
+                $"Empty submesh has {indexCount} indices.");
+        }
+
+        if (vertexCount == 0)
+        {
+            diagnostics.Add(new FormatDiagnostic(
+                DiagnosticSeverity.Info,
+                "AEM_EMPTY_SUBMESH",
+                $"Submesh {submeshIndex} is an intentional empty geometry record.",
+                submeshOffset,
+                "mesh"));
         }
 
         Vector3[] positions = reader.ReadVector3Array(

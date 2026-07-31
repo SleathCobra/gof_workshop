@@ -113,3 +113,18 @@ Ignored visual evidence is under `work/screenshots/`, including:
   wired.
 - The Changes activity currently presents validated staged replacements and conflicts; richer
   stage/unstage grouping and full side-by-side comparison documents remain follow-up UI work.
+
+## 2026-07-31 cross-platform continuation
+
+- The Release solution now contains explicit GOF2 PC, Android, iOS, and macOS profiles plus a
+  separately identified GOF3D iOS research profile. Final automated validation is 81/81 tests.
+- The five available local corpora contain 5,145 AEI and 4,514 AEM files. All AEI files parse,
+  decode, and reconstruct byte-for-byte. AEM scene conversion succeeds for 4,493 files; 21 legacy
+  or malformed files are classified with controlled diagnostics rather than crashing.
+- The macOS renderer now chooses explicit GLSL ES 3.00, desktop core 1.50, or legacy desktop 1.20
+  sources from the actual context and enforces VAO use on desktop core contexts. Physical Mac
+  hardware was unavailable, so this is build/test validation plus a controlled software fallback,
+  not a claim of completed driver validation.
+- Workspace-free Quick Inspect, the browser-local host, glTF/GLB and OBJ import into validated PC
+  AEM v4/v5, a keyframe inspector/editor for confirmed transform channels, the structured language
+  editor, the expanded CC0 synthetic corpus, and the restartable tutorial overlay are implemented.

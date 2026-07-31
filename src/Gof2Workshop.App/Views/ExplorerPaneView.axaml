@@ -18,6 +18,29 @@
                   ToolTip.Tip="Refresh game assets" Content="↻" />
         </Grid>
         <TabControl Grid.Row="1">
+          <TabItem Header="Quick Inspect">
+            <Grid RowDefinitions="Auto,*">
+              <Border Margin="6" Padding="7" Background="#332B19" CornerRadius="3">
+                <TextBlock Foreground="#FFD78A" FontSize="11"
+                           Text="STANDALONE · READ ONLY · DROP FILES ANYWHERE" />
+              </Border>
+              <TreeView Grid.Row="1" Margin="3" ItemsSource="{Binding InspectionAssetTree}"
+                        SelectedItem="{Binding SelectedTreeNode}"
+                        DoubleTapped="OnAssetDoubleTapped">
+                <TreeView.ItemTemplate>
+                  <TreeDataTemplate ItemsSource="{Binding Children}">
+                    <Grid ColumnDefinitions="18,*">
+                      <TextBlock Text="{Binding StatusGlyph}" Foreground="#FFD166" />
+                      <StackPanel Grid.Column="1">
+                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock FontSize="9" Opacity="0.52" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                    </Grid>
+                  </TreeDataTemplate>
+                </TreeView.ItemTemplate>
+              </TreeView>
+            </Grid>
+          </TabItem>
           <TabItem Header="Mod Workspace">
             <Grid RowDefinitions="Auto,*">
               <Border Margin="6" Padding="7" Background="#153022" CornerRadius="3">

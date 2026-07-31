@@ -6,12 +6,44 @@ namespace Gof2Workshop.Workbench;
 
 public enum AssetRelationshipSource
 {
+    ConfirmedExternalReference,
+    ExactKnownMapping,
     WorkspaceOverride,
     ExactFileStem,
     NamingConvention,
     NeighboringCategory,
     Unresolved,
 }
+
+public enum AssetDependencyKind
+{
+    MaterialTexture,
+    DatabaseModel,
+    DatabaseTexture,
+    MissionReference,
+    UiRegion,
+    LanguageReference,
+    Unknown,
+}
+
+public enum AssetDependencyEffect
+{
+    ViewerOnly,
+    ExportOnly,
+    ConfirmedGameEffective,
+    HeuristicGameMapping,
+    Unknown,
+}
+
+public sealed record AssetDependency(
+    IndexedAsset Source,
+    IndexedAsset? Target,
+    AssetDependencyKind Kind,
+    AssetDependencyEffect Effect,
+    AssetRelationshipSource EvidenceSource,
+    AssetRelationshipConfidence Confidence,
+    string Evidence,
+    int? PrimitiveIndex = null);
 
 public enum AssetRelationshipConfidence
 {
@@ -63,12 +95,18 @@ public interface IAssetRelationshipService
         WorkspaceDefinition workspace,
         IndexedAsset aemAsset,
         int primitiveIndex);
+
+    public IReadOnlyList<AssetDependency> GetUses(IndexedAsset asset);
+
+    public IReadOnlyList<AssetDependency> GetReferencedBy(IndexedAsset asset);
 }
 
 public sealed partial class AssetRelationshipService : IAssetRelationshipService
 {
     private readonly object gate = new();
     private IndexedAsset[] textureAssets = [];
+    private readonly Dictionary<string, AssetDependency> materialDependencies =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public void UpdateAssets(IEnumerable<IndexedAsset> assets)
     {
@@ -107,7 +145,7 @@ public sealed partial class AssetRelationshipService : IAssetRelationshipService
         {
             if (configured.Equals("!none", StringComparison.Ordinal))
             {
-                return new AssetRelationshipResolution(
+                AssetRelationshipResolution disabled = new(
                     aemAsset,
                     primitiveIndex,
                     AssetRelationshipSource.WorkspaceOverride,
@@ -116,6 +154,8 @@ public sealed partial class AssetRelationshipService : IAssetRelationshipService
                     [],
                     "The material was explicitly cleared in this workspace.",
                     []);
+                Track(disabled);
+                return disabled;
             }
 
             IndexedAsset? selected = FindConfigured(textures, configured, workspace);
@@ -127,7 +167,7 @@ public sealed partial class AssetRelationshipService : IAssetRelationshipService
                     AssetRelationshipConfidence.Confirmed,
                     "Workspace-level manual material assignment.",
                     10_000);
-                return new AssetRelationshipResolution(
+                AssetRelationshipResolution manual = new(
                     aemAsset,
                     primitiveIndex,
                     candidate.Source,
@@ -136,6 +176,8 @@ public sealed partial class AssetRelationshipService : IAssetRelationshipService
                     [candidate],
                     candidate.Reason,
                     []);
+                Track(manual);
+                return manual;
             }
         }
 
@@ -231,7 +273,7 @@ public sealed partial class AssetRelationshipService : IAssetRelationshipService
         IReadOnlyList<string> warnings = automatic is null
             ? ["No medium- or high-confidence AEI material relationship was found."]
             : [];
-        return new AssetRelationshipResolution(
+        AssetRelationshipResolution result = new(
             aemAsset,
             primitiveIndex,
             automatic?.Source ?? AssetRelationshipSource.Unresolved,
@@ -240,6 +282,8 @@ public sealed partial class AssetRelationshipService : IAssetRelationshipService
             new ReadOnlyCollection<AssetRelationshipCandidate>(ordered),
             automatic?.Reason ?? "Material relationship unresolved.",
             warnings);
+        Track(result);
+        return result;
     }
 
     public void SetMaterialOverride(
@@ -279,6 +323,61 @@ public sealed partial class AssetRelationshipService : IAssetRelationshipService
         ArgumentNullException.ThrowIfNull(aemAsset);
         workspace.MaterialOverrides[CreateOverrideKey(aemAsset, primitiveIndex)] = "!none";
     }
+
+    public IReadOnlyList<AssetDependency> GetUses(IndexedAsset asset)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        lock (gate)
+        {
+            return materialDependencies.Values
+                .Where(value => AssetIdentity(value.Source).Equals(
+                    AssetIdentity(asset),
+                    StringComparison.OrdinalIgnoreCase))
+                .OrderBy(value => value.PrimitiveIndex)
+                .ToArray();
+        }
+    }
+
+    public IReadOnlyList<AssetDependency> GetReferencedBy(IndexedAsset asset)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        lock (gate)
+        {
+            string identity = AssetIdentity(asset);
+            return materialDependencies.Values
+                .Where(value => value.Target is not null &&
+                    AssetIdentity(value.Target).Equals(identity, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(value => value.Source.RelativePath, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(value => value.PrimitiveIndex)
+                .ToArray();
+        }
+    }
+
+    private void Track(AssetRelationshipResolution resolution)
+    {
+        AssetDependencyEffect effect = resolution.Source == AssetRelationshipSource.WorkspaceOverride
+            ? AssetDependencyEffect.ViewerOnly
+            : resolution.SelectedAsset is null
+                ? AssetDependencyEffect.Unknown
+                : AssetDependencyEffect.HeuristicGameMapping;
+        AssetDependency dependency = new(
+            resolution.SourceAsset,
+            resolution.SelectedAsset,
+            AssetDependencyKind.MaterialTexture,
+            effect,
+            resolution.Source,
+            resolution.Confidence,
+            resolution.Reason,
+            resolution.PrimitiveIndex);
+        string key = $"{AssetIdentity(resolution.SourceAsset)}#material={resolution.PrimitiveIndex}";
+        lock (gate)
+        {
+            materialDependencies[key] = dependency;
+        }
+    }
+
+    private static string AssetIdentity(IndexedAsset asset) =>
+        Path.GetFullPath(asset.FullPath);
 
     public static string CreateOverrideKey(IndexedAsset aemAsset, int primitiveIndex)
     {

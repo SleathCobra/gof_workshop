@@ -190,6 +190,38 @@ public sealed partial class MainWindow : Window, IDisposable
         eventArgs.Handled = true;
     }
 
+    private void OnDragOver(object? sender, DragEventArgs eventArgs)
+    {
+        _ = sender;
+        eventArgs.DragEffects = eventArgs.DataTransfer.TryGetFiles() is { Length: > 0 }
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+        eventArgs.Handled = true;
+    }
+
+    private async void OnDrop(object? sender, DragEventArgs eventArgs)
+    {
+        _ = sender;
+        eventArgs.Handled = true;
+        string[] paths = (eventArgs.DataTransfer.TryGetFiles() ?? [])
+            .Select(item => item.Path.LocalPath)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .ToArray();
+        if (paths.Length == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await viewModel.OpenStandalonePathsAsync(paths);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            viewModel.StatusMessageForUnhandled(exception);
+        }
+    }
+
     private void ShowControlledError(Exception exception)
     {
         Window dialog = new()

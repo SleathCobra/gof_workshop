@@ -64,6 +64,7 @@ public sealed record AeiFormatDescriptor(
             0x01 => Raw(id, AeiCompressionFormat.UncompressedUi, "Raw RGBA UI"),
             0x03 => Raw(id, AeiCompressionFormat.Uncompressed, "Raw RGBA"),
             0x81 => Raw(id, AeiCompressionFormat.UncompressedCubeMapPc, "Raw RGBA PC cube map"),
+            0xA6 => Raw(id, AeiCompressionFormat.UncompressedCubeMap, "Raw RGBA macOS cube map"),
             0xC2 => Raw(id, AeiCompressionFormat.UncompressedCubeMap, "Raw RGBA cube map"),
             0x0D => Compressed(id, AeiCompressionFormat.Pvrtc2Rgba, "PVRTC 2bpp RGBA"),
             0x10 => Compressed(id, AeiCompressionFormat.Pvrtc4Rgba, "PVRTC 4bpp RGBA"),

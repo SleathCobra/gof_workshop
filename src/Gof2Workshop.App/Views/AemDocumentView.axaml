@@ -73,7 +73,9 @@
                      VerticalAlignment="Bottom" Height="3" />
       </Grid>
       <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="#343B46" />
-      <Grid Grid.Column="2" RowDefinitions="Auto,Auto,Auto,Auto,*">
+      <TabControl Grid.Column="2">
+      <TabItem Header="Scene">
+      <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
         <TextBlock Classes="section" Text="SCENE / SUBMESHES" />
         <CheckBox Grid.Row="1" Margin="8,0,8,6" IsChecked="{Binding IsolateSubmesh}"
                   Content="Isolate selected submesh" />
@@ -113,6 +115,51 @@
           </ListBox.ItemTemplate>
         </ListBox>
       </Grid>
+      </TabItem>
+      <TabItem Header="Animation">
+        <Grid RowDefinitions="Auto,150,*,Auto" Margin="6">
+          <StackPanel>
+            <TextBlock Classes="section" Text="KEYFRAME INSPECTOR" />
+            <ComboBox Margin="4" ItemsSource="{Binding AnimationCurves}"
+                      SelectedItem="{Binding SelectedAnimationCurve}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+          <ListBox Grid.Row="1" Margin="4" ItemsSource="{Binding AnimationKeys}"
+                   SelectedItem="{Binding SelectedAnimationKey}">
+            <ListBox.ItemTemplate>
+              <DataTemplate><TextBlock Margin="3" Text="{Binding Label}" /></DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <StackPanel Grid.Row="2" Margin="5" Spacing="5">
+            <TextBlock Text="Confirmed transform key" FontWeight="SemiBold" />
+            <Grid ColumnDefinitions="55,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="4">
+              <TextBlock Text="Time ms" VerticalAlignment="Center" />
+              <TextBox Grid.Column="1" Text="{Binding KeyTimeMilliseconds}" />
+              <TextBlock Grid.Row="1" Text="X" VerticalAlignment="Center" />
+              <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding KeyValueX}" />
+              <TextBlock Grid.Row="2" Text="Y" VerticalAlignment="Center" />
+              <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding KeyValueY}" />
+              <TextBlock Grid.Row="3" Text="Z" VerticalAlignment="Center" />
+              <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding KeyValueZ}" />
+            </Grid>
+            <WrapPanel>
+              <Button Margin="0,0,4,4" Command="{Binding ApplyAnimationKeyCommand}" Content="Apply" />
+              <Button Margin="0,0,4,4" Command="{Binding AddAnimationKeyCommand}" Content="Add Key" />
+              <Button Margin="0,0,4,4" Command="{Binding DeleteAnimationKeyCommand}" Content="Delete" />
+              <Button Margin="0,0,4,4" Command="{Binding PreviousAnimationKeyCommand}" Content="Previous" />
+              <Button Margin="0,0,4,4" Command="{Binding NextAnimationKeyCommand}" Content="Next" />
+            </WrapPanel>
+            <TextBlock FontSize="10" Opacity="0.65" TextWrapping="Wrap"
+                       Text="Original game assets remain read-only. UV and special channels are visible but preserved without semantic edits." />
+          </StackPanel>
+          <TextBlock Grid.Row="3" Margin="5" FontSize="10" Opacity="0.6"
+                     Text="Times are stored in milliseconds; Workshop playback displays seconds." />
+        </Grid>
+      </TabItem>
+      </TabControl>
     </Grid>
   </Grid>
 </UserControl>

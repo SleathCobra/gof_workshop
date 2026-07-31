@@ -1,0 +1,38 @@
+<UserControl
+    x:Class="Gof2Workshop.App.Views.LanguageDocumentView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="8">
+    <Border Padding="8" Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
+        <StackPanel>
+          <TextBlock FontSize="17" FontWeight="SemiBold" Text="Language Table" />
+          <TextBlock FontSize="11" Opacity="0.75" Text="{Binding EditState}" />
+        </StackPanel>
+        <Button Grid.Column="1" Content="Undo" Command="{Binding UndoCommand}" />
+        <Button Grid.Column="2" Content="Redo" Command="{Binding RedoCommand}" />
+        <Button Grid.Column="3" Content="Save Copy…" Command="{Binding ExportCommand}" />
+      </Grid>
+    </Border>
+    <Grid Grid.Row="1" ColumnDefinitions="2*,5,3*" Margin="0,8">
+      <ListBox ItemsSource="{Binding Entries}" SelectedItem="{Binding SelectedEntry, Mode=TwoWay}">
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <TextBlock Margin="5,3" FontFamily="Consolas" Text="{Binding Label}"
+                       TextTrimming="CharacterEllipsis" />
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="#343B46" />
+      <Grid Grid.Column="2" RowDefinitions="Auto,*,Auto" Margin="10,0,0,0">
+        <TextBlock FontWeight="SemiBold" Text="Selected value" />
+        <TextBox Grid.Row="1" Margin="0,6" AcceptsReturn="True" TextWrapping="Wrap"
+                 IsReadOnly="{Binding IsReadOnly}" Text="{Binding DraftValue, Mode=TwoWay}" />
+        <Button Grid.Row="2" HorizontalAlignment="Right" Content="Apply Entry"
+                Command="{Binding ApplyCommand}" />
+      </Grid>
+    </Grid>
+    <TextBlock Grid.Row="2" FontSize="11" Opacity="0.72"
+               Text="Writer policy: big-endian lengths and UTF-8 are preserved; output is reparsed before it is committed." />
+  </Grid>
+</UserControl>

@@ -1,6 +1,6 @@
 # Dependency and renderer decisions
 
-Reviewed 2026-07-29.
+Reviewed 2026-07-31.
 
 ## Added dependencies
 
@@ -9,6 +9,7 @@ Reviewed 2026-07-29.
 | MSTest | 4.3.2 | Test projects only | MIT | Microsoft-supported; current stable package published 2026-07-13 | Selected for synthetic and optional local-corpus tests. It has no production/runtime role. |
 | Avalonia.Desktop | 12.1.0 | Desktop application only | MIT | Avalonia-maintained current stable release, published 2026-07-09 | Selected as the Windows-first cross-platform desktop host. Supplies Win32, Skia, text shaping, and platform backends transitively. |
 | Avalonia.Themes.Fluent | 12.1.0 | Desktop application only | MIT | Released and maintained with Avalonia 12.1.0 | Supplies the accessible compact Fluent control theme; avoids a custom control-theme dependency. |
+| Avalonia.Browser | 12.1.0 | Browser host only | MIT | Avalonia-maintained current stable release, published with Avalonia 12.1.0 | Official WebAssembly host using CanvasKit/WebGL. It supplies browser lifecycle and browser-authorized storage pickers without adding a server component. |
 | AssetRipper.TextureDecoder | 2.6.2 | AEI format library | MIT | Actively maintained AssetRipper component; current package published 2026-06-01 | Selected for managed PVRTC, ETC1/2, and ATC decoding. It is dependency-free, accepts raw spans, exposes predictable RGBA output, and adds no native runtime. The existing independently tested BC1/2/3 path is retained. |
 | BCnEncoder.Net | 2.3.0 | AEI format library | MIT OR Unlicense | Current release published 2026-03-05; repository remains active | Selected for BC1/BC2/BC3 encoding behind `IAeiPixelEncoder`. It consumes raw RGBA spans, has no native dependency, exposes quality controls, and produces deterministic same-size blocks suitable for the preserved AEI surface layout. |
 
@@ -19,13 +20,14 @@ Official package records:
 - <https://www.nuget.org/packages/MSTest/4.3.2>
 - <https://www.nuget.org/packages/Avalonia.Desktop/12.1.0>
 - <https://www.nuget.org/packages/Avalonia.Themes.Fluent/12.1.0>
+- <https://www.nuget.org/packages/Avalonia.Browser/12.1.0>
 - <https://www.nuget.org/packages/AssetRipper.TextureDecoder/2.6.2>
 - <https://github.com/AssetRipper/AssetRipper.TextureDecoder>
 - <https://www.nuget.org/packages/BCnEncoder.Net/2.3.0>
 
-`Avalonia.Desktop` brings native SkiaSharp, HarfBuzz, Win32, ANGLE, X11, and macOS assets into the application output. Windows is first class; the cross-platform assets are a deployment-size tradeoff of the standard desktop package. Avalonia does not flow into parser, scene, exporter, CLI, or nonvisual workbench assemblies.
+`Avalonia.Desktop` brings native SkiaSharp, HarfBuzz, Win32, ANGLE, X11, and macOS assets into the application output. `Avalonia.Browser` brings WebAssembly builds of SkiaSharp/CanvasKit and HarfBuzz; it requires the `wasm-tools` workload at publish time. Avalonia does not flow into parser, scene, exporter, CLI, or nonvisual workbench assemblies.
 
-`dotnet list GalaxyOnFire2Workshop.sln package --vulnerable --include-transitive` reported no known vulnerable packages from the configured sources on 2026-07-29.
+`dotnet list GalaxyOnFire2Workshop.sln package --vulnerable --include-transitive` reported no known vulnerable packages from the configured sources on 2026-07-31.
 
 ## Preserved internal implementations
 
@@ -61,9 +63,15 @@ Official package records:
 - <https://www.nuget.org/packages/BCnEncoder.Net/2.3.0>
 - <https://www.nuget.org/packages/SixLabors.ImageSharp/4.0.0>
 
+## Browser host decision
+
+Avalonia's official `Avalonia.Browser` host was chosen instead of a parallel HTML framework. It reuses the project’s C# parsers and deterministic software scene renderer and presents through CanvasKit/WebGL. Browser file access is limited to browser-granted `IStorageFile` streams; exports use a browser-authorized save/download stream. The first host retains at most 256 MiB per file and 512 MiB per inspection collection.
+
+The Release publish is trimmed with compiled Avalonia bindings. The clean 2026-07-31 static publish contains 170 files and is 29.56 MiB uncompressed. A future dedicated WebGL scene backend can consume the same neutral `SceneDocument`; the first milestone deliberately uses bounded software rasterization rather than assuming the desktop `OpenGlControlBase` works under WebAssembly.
+
 ## Codec validation boundary
 
-PVRTC 2/4bpp is validated both by synthetic zero blocks and by all 18 real local samples; visual inspection confirmed the expected RGBA/alpha orientation. ETC1, ETC2 RGBA, and ATC RGBA are exercised with bounded synthetic blocks because the current local corpus contains none. Android samples remain required to confirm platform-specific payload orientation and every alpha variant.
+PVRTC 2/4bpp is validated by synthetic blocks and the PC/iOS/macOS corpora. ETC1 is exercised by 208 Android corpus files; ETC2/ATC-family dispatch is synthetic-fixture validated. All 5,136 GOF2 AEI files across the four product profiles, plus nine separately profiled GOF3D research files, parsed, decoded, and reconstructed byte-for-byte on 2026-07-31. Visual orientation and alpha correctness still require representative inspection per platform; a byte-identical container round trip alone does not prove orientation.
 
 ## Realtime preview approach
 
@@ -80,3 +88,18 @@ a structured warning and switch to the retained software renderer.
 
 The Windows validation context was OpenGL ES 3.0 through Avalonia's ANGLE backend on Intel UHD
 Graphics (Direct3D 11), maximum texture dimension 16,384.
+
+## Import and structured-data decision
+
+No model-import package was added. The Workshop importer intentionally implements a bounded glTF
+2.0/GLB/OBJ subset: triangle primitives, float position/normal/UV/color accessors, 8/16/32-bit
+indices checked into the AEM 16-bit limit, contained sidecars, baked node transforms, and explicit
+rejection of sparse accessors, skinning, morphs and unsupported topology. This keeps the supported
+surface auditable and avoids pulling a general 3D engine into desktop or browser output.
+
+`Gof2Workshop.GameData` adds no package. Its first `.lang` parser/writer uses BCL UTF-8 and
+`BinaryPrimitives` only. The UI remains Avalonia-owned; parser, writer, operations and recovery
+records are platform-neutral.
+
+The browser's tiny settings layer uses .NET's built-in `JSImport` support and browser
+`localStorage`; no JavaScript package or server component was introduced.

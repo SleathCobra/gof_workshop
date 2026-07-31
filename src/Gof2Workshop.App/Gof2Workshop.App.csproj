@@ -11,6 +11,8 @@
     <ProjectReference Include="..\Gof2Workshop.Export\Gof2Workshop.Export.csproj" />
     <ProjectReference Include="..\Gof2Workshop.Formats.Aei\Gof2Workshop.Formats.Aei.csproj" />
     <ProjectReference Include="..\Gof2Workshop.Formats.Aem\Gof2Workshop.Formats.Aem.csproj" />
+    <ProjectReference Include="..\Gof2Workshop.GameData\Gof2Workshop.GameData.csproj" />
+    <ProjectReference Include="..\Gof2Workshop.Import\Gof2Workshop.Import.csproj" />
     <ProjectReference Include="..\Gof2Workshop.Scene\Gof2Workshop.Scene.csproj" />
     <ProjectReference Include="..\Gof2Workshop.Workbench\Gof2Workshop.Workbench.csproj" />
   </ItemGroup>

@@ -4,7 +4,7 @@
   "ModId": "workshop.synthetic-demo",
   "Author": "GOF2 Workshop contributors",
   "ModVersion": "0.1.0",
-  "ProfileId": "pc-1x",
+  "ProfileId": "gof2-pc-1x",
   "GameAssetRoot": "Assets",
   "ModRoot": "SampleMod",
   "OutputRoot": "SampleMod/Generated",

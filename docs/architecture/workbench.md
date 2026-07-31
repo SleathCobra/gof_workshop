@@ -18,6 +18,10 @@ The desktop milestone adds two layers without changing the clean-room parser bou
 - operation-based AEI edit sessions, undo/redo, versioned atomic recovery, and source-hash conflicts;
 - versioned distributable manifests plus validated deterministic mod builds;
 - confidence-bearing AEM-to-AEI relationships and workspace material overrides.
+- bounded, workspace-free Inspection Collections for dropped files and folders;
+- explicit conversion of an Inspection Collection into user-owned workspace copies;
+- profile-isolated platform capabilities for GOF2 PC/Android/iOS/macOS and GOF3D iOS research;
+- restartable tutorial definitions and versioned local progress.
 
 It has no Avalonia dependency. Its services use records and interfaces that can be tested without a window.
 
@@ -32,7 +36,7 @@ It has no Avalonia dependency. Its services use records and interfaces that can 
 - contextual Inspector groups;
 - Output, Problems, and Asset Details tools;
 - persisted split-pane sizes, visibility, and detachable Explorer/Inspector/bottom tool windows;
-- AEI and AEM editor providers.
+- AEI, AEM, and structured language-table editor providers.
 - a Changes activity for validated replacements, warnings, conflicts, validation, and builds.
 
 An editor provider receives an indexed asset and returns an `IDocument`. The workbench does not switch over every future file/editor type. Mission graphs, scripts, blueprint graphs, UI designers, database editors, and documentation pages can register providers and add their own view data template.
@@ -67,3 +71,20 @@ software renderer as an explicit fallback. Both consume the same parser-neutral 
 animation state. OpenGL mesh buffers are persistent, decoded AEI mip chains are cached and uploaded
 outside the per-frame path, and CPU ray picking runs only on clicks. Material resolution is an
 independent service; neither renderer parses AEM or AEI containers.
+
+## Portable hosts and import boundary
+
+`Gof2Workshop.Browser` is a static Avalonia WebAssembly host over the same parsers and scene model.
+Browser-selected bytes live in a bounded Inspection Collection, small settings use origin-local
+storage, and exports require a browser-authorized save. The first browser viewport deliberately uses
+the bounded textured software renderer through CanvasKit; a dedicated realtime WebGL renderer is a
+separate backend, not a parser fork.
+
+`Gof2Workshop.Import` converts bounded glTF/GLB and OBJ/MTL inputs into a neutral imported scene,
+then through an explicitly selected PC AEM v4/v5 target. Serialization is accepted only after
+reparse, scene conversion, index/bounds checks, and statistic comparison. It does not expose raw AEM
+mutation to importers.
+
+`Gof2Workshop.GameData` owns the first confirmed structured format: big-endian, byte-length-prefixed
+UTF-8 language tables. Its operation log, hash-checked recovery, writer, and validation are UI-free;
+other database families remain read-only research candidates.

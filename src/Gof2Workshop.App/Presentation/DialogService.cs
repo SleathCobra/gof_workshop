@@ -17,6 +17,8 @@ public interface IUserDialogService
 
     public Task<string?> PickAssetFileAsync(string title, string extension);
 
+    public Task<IReadOnlyList<string>> PickAssetFilesAsync(string title);
+
     public void RevealInExplorer(string path);
 }
 
@@ -108,6 +110,29 @@ public sealed class UserDialogService : IUserDialogService
                 ],
             });
         return files.Count == 0 ? null : files[0].Path.LocalPath;
+    }
+
+    public async Task<IReadOnlyList<string>> PickAssetFilesAsync(string title)
+    {
+        Window owner = Owner ?? throw new InvalidOperationException("Dialog owner is not attached.");
+        IReadOnlyList<IStorageFile> files = await owner.StorageProvider.OpenFilePickerAsync(
+            new FilePickerOpenOptions
+            {
+                Title = title,
+                AllowMultiple = true,
+                FileTypeFilter =
+                [
+                    new FilePickerFileType("Workshop inspection files")
+                    {
+                        Patterns = ["*.aei", "*.aem", "*.lang", "*.png", "*.gltf", "*.glb", "*.obj", "*.mtl", "*.bin"],
+                    },
+                    FilePickerFileTypes.All,
+                ],
+            });
+        return files
+            .Select(file => file.Path.LocalPath)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .ToArray();
     }
 
     public void RevealInExplorer(string path)

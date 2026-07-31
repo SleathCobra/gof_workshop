@@ -1,0 +1,68 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:Gof2Workshop.Browser"
+             x:Class="Gof2Workshop.Browser.MainView"
+             x:DataType="local:MainView"
+             DragDrop.AllowDrop="True"
+             DragDrop.DragOver="OnDragOver"
+             DragDrop.Drop="OnDrop">
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Background="#15171B">
+    <Border Grid.Row="0" Padding="10,8" Background="#202329" BorderBrush="#333842" BorderThickness="0,0,0,1">
+      <DockPanel LastChildFill="True">
+        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="8">
+          <Button Content="Open local files" Click="OnOpenFiles" />
+          <Button Content="Export PNG" Click="OnExportPng" IsEnabled="{Binding CanExportPng}" />
+          <Button Content="Clear collection" Click="OnClear" />
+          <Button Content="Clear local settings" Click="OnClearLocalData" />
+          <ComboBox Width="190" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" />
+        </StackPanel>
+        <TextBlock Margin="18,5,0,0" Text="Galaxy on Fire 2 Workshop - Browser Quick Inspect" FontWeight="SemiBold" />
+      </DockPanel>
+    </Border>
+
+    <Border Grid.Row="1" Padding="10,6" Background="#182A24" BorderBrush="#27543F" BorderThickness="0,0,0,1">
+      <TextBlock Text="Local-only: selected files stay inside this browser tab. Nothing is uploaded." Foreground="#9BDFC1" />
+    </Border>
+
+    <Grid Grid.Row="2" ColumnDefinitions="280,5,*">
+      <Border Grid.Column="0" Padding="8" BorderBrush="#333842" BorderThickness="0,0,1,0">
+        <Grid RowDefinitions="Auto,*">
+          <TextBlock Text="INSPECTION COLLECTION" FontSize="12" FontWeight="Bold" Margin="2,2,2,8" />
+          <ListBox Grid.Row="1" ItemsSource="{Binding Session.Assets}" SelectedItem="{Binding SelectedAsset}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="local:BrowserAssetItem">
+                <StackPanel Margin="2,5">
+                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding Summary}" FontSize="11" Foreground="#AAB1BD" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding SizeText}" FontSize="10" Foreground="#6CAFF5" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Grid>
+      </Border>
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="#343943" />
+      <Grid Grid.Column="2" RowDefinitions="*,Auto">
+        <Border Margin="10" Background="#0E1116" BorderBrush="#333842" BorderThickness="1">
+          <Grid>
+            <Image Source="{Binding Preview}" Stretch="Uniform" Margin="8" />
+            <TextBlock Text="Drop AEI and AEM files here, or choose Open local files."
+                       IsVisible="{Binding IsEmpty}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       Foreground="#9AA2AE" FontSize="16" />
+          </Grid>
+        </Border>
+        <Border Grid.Row="1" Padding="10,8" Background="#202329">
+          <TextBlock Text="{Binding Status}" TextWrapping="Wrap" />
+        </Border>
+      </Grid>
+    </Grid>
+
+    <Border Grid.Row="3" Padding="8,4" Background="#0E1014" BorderBrush="#333842" BorderThickness="0,1,0,0">
+      <StackPanel>
+        <TextBlock Text="Browser fallback renderer: bounded textured software rasterization presented by Avalonia CanvasKit/WebGL. Files are read through browser-granted handles only." FontSize="11" Foreground="#9AA2AE" />
+        <TextBlock Text="{Binding StorageStatus}" FontSize="10" Foreground="#7397B6" />
+      </StackPanel>
+    </Border>
+  </Grid>
+</UserControl>
