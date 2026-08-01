@@ -6,25 +6,49 @@
              DragDrop.AllowDrop="True"
              DragDrop.DragOver="OnDragOver"
              DragDrop.Drop="OnDrop">
-  <Grid RowDefinitions="Auto,Auto,*,Auto" Background="#15171B">
+  <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Background="#15171B">
     <Border Grid.Row="0" Padding="10,8" Background="#202329" BorderBrush="#333842" BorderThickness="0,0,0,1">
-      <DockPanel LastChildFill="True">
-        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="8">
+      <Grid RowDefinitions="Auto,Auto">
+        <WrapPanel Orientation="Horizontal">
           <Button Content="Open local files" Click="OnOpenFiles" />
+          <Button Content="Load public demo" Click="OnLoadDemo" />
+          <Button Content="Save local workspace" Click="OnSaveBrowserWorkspace" />
+          <Button Content="Restore local workspace" Click="OnRestoreBrowserWorkspace" />
+          <Button Content="Export workspace" Click="OnExportBrowserWorkspace" />
+          <Button Content="Import workspace" Click="OnImportBrowserWorkspace" />
           <Button Content="Export PNG" Click="OnExportPng" IsEnabled="{Binding CanExportPng}" />
+          <Button Content="Export edited AEI" Click="OnExportEditedAei" IsEnabled="{Binding HasEditableAei}" />
+          <Button Content="Export AEM copy" Click="OnExportAem" IsEnabled="{Binding HasAem}" />
+          <Button Content="Export edited BIN" Click="OnExportBin" IsEnabled="{Binding HasGameData}" />
           <Button Content="Clear collection" Click="OnClear" />
           <Button Content="Clear local settings" Click="OnClearLocalData" />
           <ComboBox Width="190" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" />
-        </StackPanel>
-        <TextBlock Margin="18,5,0,0" Text="Galaxy on Fire 2 Workshop - Browser Quick Inspect" FontWeight="SemiBold" />
-      </DockPanel>
+        </WrapPanel>
+        <TextBlock Grid.Row="1" Margin="2,7,0,0" Text="Galaxy on Fire 2 Workshop - Browser Quick Inspect" FontWeight="SemiBold" Foreground="#AAB1BD" />
+      </Grid>
     </Border>
 
     <Border Grid.Row="1" Padding="10,6" Background="#182A24" BorderBrush="#27543F" BorderThickness="0,0,0,1">
       <TextBlock Text="Local-only: selected files stay inside this browser tab. Nothing is uploaded." Foreground="#9BDFC1" />
     </Border>
 
-    <Grid Grid.Row="2" ColumnDefinitions="280,5,*">
+    <Border Grid.Row="2" Padding="8,5" Background="#1B1E24" BorderBrush="#333842" BorderThickness="0,0,0,1">
+      <DockPanel LastChildFill="True">
+        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6">
+          <Button Content="Frame All" Click="OnFrameAll" IsEnabled="{Binding HasScene}" />
+          <Button Content="Frame Selected" Click="OnFrameSelected" IsEnabled="{Binding HasScene}" />
+          <Button Content="Play / Pause" Click="OnToggleAnimation" IsEnabled="{Binding CanPlayAnimation}" />
+          <Button Content="Lit / Unlit" Click="OnToggleLit" IsEnabled="{Binding HasScene}" />
+          <Button Content="Wire" Click="OnToggleWire" IsEnabled="{Binding HasScene}" />
+          <Button Content="Bounds" Click="OnToggleBounds" IsEnabled="{Binding HasScene}" />
+          <Button Content="Perspective / Ortho" Click="OnToggleProjection" IsEnabled="{Binding HasScene}" />
+          <Button Content="WebGL / Software" Click="OnToggleRenderer" IsEnabled="{Binding HasScene}" />
+        </StackPanel>
+        <TextBlock Margin="12,5,0,0" Text="{Binding RendererStatus}" TextTrimming="CharacterEllipsis" Foreground="#76B8F5" />
+      </DockPanel>
+    </Border>
+
+    <Grid Grid.Row="3" ColumnDefinitions="280,5,*">
       <Border Grid.Column="0" Padding="8" BorderBrush="#333842" BorderThickness="0,0,1,0">
         <Grid RowDefinitions="Auto,*">
           <TextBlock Text="INSPECTION COLLECTION" FontSize="12" FontWeight="Bold" Margin="2,2,2,8" />
@@ -46,6 +70,59 @@
         <Border Margin="10" Background="#0E1116" BorderBrush="#333842" BorderThickness="1">
           <Grid>
             <Image Source="{Binding Preview}" Stretch="Uniform" Margin="8" />
+            <Border IsVisible="{Binding HasGameData}" Background="#14181E" Padding="12">
+              <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*,260">
+                <StackPanel Grid.ColumnSpan="2" Margin="0,0,0,8">
+                  <TextBlock Text="STRUCTURED BIN EDITOR" FontWeight="Bold" />
+                  <TextBlock Text="{Binding SelectedAsset.Summary}" Foreground="#9AA2AE" TextWrapping="Wrap" />
+                </StackPanel>
+                <ListBox Grid.Row="1" Grid.ColumnSpan="2"
+                         ItemsSource="{Binding SelectedDataFields}"
+                         SelectedItem="{Binding SelectedDataField}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="local:BrowserDataFieldRow">
+                      <Grid ColumnDefinitions="220,120,*,110" Margin="2,3">
+                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="1" Text="{Binding Kind}" Foreground="#76B8F5" />
+                        <TextBlock Grid.Column="2" Text="{Binding Value}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="3" Text="{Binding Confidence}" Foreground="#9AA2AE" TextTrimming="CharacterEllipsis" />
+                      </Grid>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="7" Margin="0,9,0,0">
+                  <TextBox Width="420" PlaceholderText="Select a size-stable field value" Text="{Binding DataEditValue}" />
+                  <Button Content="Apply" Click="OnApplyDataEdit" IsEnabled="{Binding CanEditSelectedDataField}" />
+                  <Button Content="Undo" Click="OnUndoDataEdit" IsEnabled="{Binding CanUndoDataEdit}" />
+                  <Button Content="Redo" Click="OnRedoDataEdit" IsEnabled="{Binding CanRedoDataEdit}" />
+                  <TextBlock Text="Unknown bytes are preserved; record-resizing edits are refused." Foreground="#D6A75C" Margin="8,5,0,0" />
+                </StackPanel>
+              </Grid>
+            </Border>
+            <Border IsVisible="{Binding HasEditableAei}"
+                    Width="350" HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                    Background="#EB14181E" BorderBrush="#3B424E" BorderThickness="1,0,0,0"
+                    Padding="12">
+              <Grid RowDefinitions="Auto,*,Auto">
+                <StackPanel>
+                  <TextBlock Text="AEI REGION EDITING" FontWeight="Bold" />
+                  <TextBlock Text="Choose a region and import an equally sized PNG. Edits are operation-based and browser-local."
+                             Margin="0,4,0,8" Foreground="#AAB1BD" TextWrapping="Wrap" />
+                </StackPanel>
+                <ListBox Grid.Row="1" ItemsSource="{Binding SelectedAeiRegions}" SelectedItem="{Binding SelectedAeiRegion}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="local:BrowserAeiRegionRow">
+                      <TextBlock Margin="3,5" Text="{Binding Label}" TextWrapping="Wrap" />
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <WrapPanel Grid.Row="2" Margin="0,8,0,0">
+                  <Button Content="Import region PNG" Click="OnImportAeiRegion" IsEnabled="{Binding CanImportAeiRegion}" />
+                  <Button Content="Undo" Click="OnUndoAeiEdit" IsEnabled="{Binding CanUndoAeiEdit}" />
+                  <Button Content="Redo" Click="OnRedoAeiEdit" IsEnabled="{Binding CanRedoAeiEdit}" />
+                </WrapPanel>
+              </Grid>
+            </Border>
             <TextBlock Text="Drop AEI and AEM files here, or choose Open local files."
                        IsVisible="{Binding IsEmpty}"
                        HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -58,9 +135,9 @@
       </Grid>
     </Grid>
 
-    <Border Grid.Row="3" Padding="8,4" Background="#0E1014" BorderBrush="#333842" BorderThickness="0,1,0,0">
+    <Border Grid.Row="4" Padding="8,4" Background="#0E1014" BorderBrush="#333842" BorderThickness="0,1,0,0">
       <StackPanel>
-        <TextBlock Text="Browser fallback renderer: bounded textured software rasterization presented by Avalonia CanvasKit/WebGL. Files are read through browser-granted handles only." FontSize="11" Foreground="#9AA2AE" />
+        <TextBlock Text="Primary renderer: dedicated WebGL 2 with persistent GPU buffers. The bounded software rasterizer remains available as fallback." FontSize="11" Foreground="#9AA2AE" />
         <TextBlock Text="{Binding StorageStatus}" FontSize="10" Foreground="#7397B6" />
       </StackPanel>
     </Border>

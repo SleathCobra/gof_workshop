@@ -8,7 +8,7 @@ derivatives remained under ignored directories.
 | Gate | Baseline | Final |
 | --- | ---: | ---: |
 | Release build | 0 warnings / 0 errors, 7.98 s | 0 warnings / 0 errors, 26.81 s including WebAssembly native link |
-| Automated tests | 62 passed, 7.95 s | 81 passed, 8.24 s |
+| Automated tests | 62 passed, 7.95 s | 90 passed, 8.46 s |
 | PC full corpus | 1,228 AEI + 752 AEM, no crash, 12.14 s | unchanged; byte-identical writer validation added |
 | NuGet audit | no known vulnerability | no known vulnerability |
 
@@ -60,12 +60,13 @@ profile; its twelve legacy strip layouts are not interpreted using GOF2 assumpti
 
 ## Browser result
 
-The clean trimmed publish contains 170 files / 30,998,519 bytes (29.56 MiB). Build, native link and
-static artifact composition passed. The available in-app browser control failed during its own
-bootstrap (`Cannot redefine property: process`), before a browser session existed, so visual browser
-startup/drop/export remains a manual requirement. The first viewport is CanvasKit/WebGL presentation
-of the bounded software rasterizer, not a dedicated realtime WebGL renderer. Proprietary bytes are
-session-only; only profile/settings use origin-local storage.
+The final clean trimmed publish contains 206 files / 32,618,127 bytes (31.11 MiB). A dedicated
+WebGL 2 renderer is now the primary browser AEM path and the bounded software renderer is retained
+as fallback. Direct Chromium DevTools automation replaced the unavailable in-app controller. Real
+Brave 150.1.92.144 and Edge 150.0.4078.105 runs validated startup, camera-triggered frames, textured
+GPU rendering, and forced context loss/restoration. Brave public-fixture scenarios additionally
+validated AEI region edit/re-encode, structured BIN editing, IndexedDB recovery, and glTF-to-AEM
+authoring. Persistence is explicit, versioned, bounded, and remains browser-local.
 
 ## macOS result
 
@@ -77,13 +78,16 @@ software fallback and exportable context/shader diagnostics remain the controlle
 
 ## Authoring and research boundaries
 
-Synthetic glTF and OBJ cubes both authored as PC AEM (v4 and v5 respectively), reparsed, converted,
-and produced deterministic software previews: one submesh, eight vertices and twelve triangles each.
-This proves Workshop structural authoring, not in-game acceptance. Skinning, morph targets, multiple
-UV sets and Blender animation reimport are not supported.
+Synthetic glTF, GLB, OBJ, and existing AEM submeshes now flow through an operation-based PC v4/v5
+authoring model and validated writer/reparse/preview. Blender 5.1.2 was run headlessly: two meshes,
+two materials, one image, one action, stable submesh metadata, an edited translation key, Workshop
+reimport, AEM v4 reconstruction, and playback all passed. Unequal curve keys were baked by Blender,
+so this route can be resampled and is not claimed lossless. This proves structural authoring, not
+in-game acceptance; skinning, morph targets, multiple UV sets, and arbitrary hierarchy remain blocked.
 
-All 22 available GOF2 PC/Android language tables reconstruct byte-for-byte. Other `.bin` families are
-not write-enabled. Clean-room runtime and corpus evidence indicates GOF2 missions are mixed native/
+All 22 available GOF2 PC/Android language tables and all 136 discovered GOF2 `.bin` files reconstruct
+byte-for-byte. Safe bounded fields are editable; collision/docking/platform weapon tables remain
+loss-preserving raw advanced data instead of guessed semantics. Clean-room runtime and corpus evidence indicates GOF2 missions are mixed native/
 procedural state rather than a confirmed standalone mission container. Mission creation therefore
 remains unavailable; the evidence and unresolved fields are documented under `docs/research/missions`.
 
@@ -104,8 +108,7 @@ dotnet run --project src/Gof2Workshop.App -c Release --no-build -- --tutorial qu
 
 ## Next smallest milestone
 
-Use a physical Apple-Silicon Mac and current Safari/Chromium machines to close the hardware/browser
-validation gaps, then implement a true WebGL render backend over the existing render snapshot. In
-parallel, capture an actual Blender export/reimport pair before enabling animation conversion, and
-isolate one non-language database family whose record boundaries and reference rules can be proved
-byte-for-byte.
+Use a physical Apple-Silicon Mac and Safari plus Firefox to close the remaining runtime matrix.
+For authoring, the next smallest vertical slice is a dedicated desktop AEM authoring document over
+the now-tested operation model, followed by evidence-driven semantics/reference validation for one
+currently opaque BIN family. Mission editing remains blocked on native runtime structure rather than UI.

@@ -3,7 +3,12 @@ using Gof2Workshop.Core;
 using Gof2Workshop.Export;
 using Gof2Workshop.Formats.Aei;
 using Gof2Workshop.Formats.Aem;
+using Gof2Workshop.GameData;
 using Gof2Workshop.Scene;
+using Gof2Workshop.Workbench;
+using Gof2Workshop.Import;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Gof2Workshop.Browser;
 
@@ -11,6 +16,7 @@ public enum BrowserAssetKind
 {
     Aei,
     Aem,
+    GameData,
     Companion,
 }
 
@@ -22,11 +28,19 @@ public sealed record BrowserAssetItem(
     AeiFile? Aei,
     RgbaImage? Texture,
     AemFile? Aem,
-    SceneDocument? Scene)
+    SceneDocument? Scene,
+    GameDataDocument? GameData = null,
+    GameDataEditSession? GameDataSession = null,
+    AeiEditSession? AeiEditSession = null,
+    bool IsGenerated = false)
 {
     public string SizeText => Bytes.Length < 1024 * 1024
         ? $"{Bytes.Length / 1024d:F1} KiB"
         : $"{Bytes.Length / 1048576d:F1} MiB";
+
+    public RgbaImage? EffectiveTexture => AeiEditSession?.WorkingAtlas ?? Texture;
+
+    public bool IsModified => AeiEditSession?.IsDirty == true || GameDataSession?.AppliedOperations.Count > 0;
 }
 
 public sealed class BrowserAssetSession
@@ -64,6 +78,71 @@ public sealed class BrowserAssetSession
     {
         Assets.Clear();
         retainedBytes = 0;
+    }
+
+    public IReadOnlyList<BrowserAssetItem> AuthorImportedModels(
+        AssetPlatformProfile profile,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        List<BrowserAssetItem> authored = [];
+        BrowserAssetItem[] sources = Assets
+            .Where(asset => asset.Kind == BrowserAssetKind.Companion &&
+                Path.GetExtension(asset.Name).ToLowerInvariant() is ".gltf" or ".glb" or ".obj")
+            .ToArray();
+        foreach (BrowserAssetItem source in sources)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string outputName = Path.GetFileNameWithoutExtension(source.Name) + "-authored.aem";
+            if (Assets.Any(asset => asset.IsGenerated &&
+                string.Equals(asset.Name, outputName, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            ImportedScene imported = Path.GetExtension(source.Name).ToLowerInvariant() switch
+            {
+                ".gltf" => new GltfModelImporter().ImportWithSidecars(
+                    source.Bytes,
+                    source.Name,
+                    ResolveSidecar,
+                    cancellationToken),
+                ".glb" => new GltfModelImporter().Import(source.Bytes, source.Name, cancellationToken: cancellationToken),
+                ".obj" => new ObjModelImporter().Import(Encoding.UTF8.GetString(source.Bytes), source.Name, cancellationToken),
+                _ => throw new NotSupportedException("Only glTF, GLB, and OBJ can be authored to AEM."),
+            };
+            AemAuthoringResult result = new AemAuthoringService().Author(
+                imported,
+                new AemAuthoringOptions(AemVersion.V4),
+                cancellationToken);
+            if (retainedBytes + result.Bytes.Length > MaximumCollectionBytes)
+            {
+                throw new InvalidDataException("The authored AEM would exceed the browser collection memory limit.");
+            }
+
+            BrowserAssetItem item = new(
+                outputName,
+                BrowserAssetKind.Aem,
+                result.Bytes,
+                $"Authored AEM v4; {result.Scene.Primitives.Count} submesh(es); writer reparse passed",
+                null,
+                null,
+                result.Reparsed,
+                result.Scene,
+                IsGenerated: true);
+            retainedBytes += result.Bytes.Length;
+            Assets.Add(item);
+            authored.Add(item);
+        }
+
+        return authored;
+
+        byte[]? ResolveSidecar(string uri)
+        {
+            string expected = Path.GetFileName(uri.Replace('\\', '/'));
+            return Assets.FirstOrDefault(asset =>
+                string.Equals(Path.GetFileName(asset.Name), expected, StringComparison.OrdinalIgnoreCase))?.Bytes;
+        }
     }
 
     public static RgbaImage RenderScene(BrowserAssetItem item, CancellationToken cancellationToken = default)
@@ -108,7 +187,7 @@ public sealed class BrowserAssetSession
 
         string stem = NormalizeStem(Path.GetFileNameWithoutExtension(model.Name));
         return Assets
-            .Where(asset => asset.Kind == BrowserAssetKind.Aei && asset.Texture is not null)
+            .Where(asset => asset.Kind == BrowserAssetKind.Aei && asset.EffectiveTexture is not null)
             .Select(asset => new
             {
                 Asset = asset,
@@ -167,7 +246,15 @@ public sealed class BrowserAssetSession
                 parsed,
                 texture,
                 null,
-                null);
+                null,
+                AeiEditSession: texture is null
+                    ? null
+                    : new AeiEditSession(
+                        name,
+                        Convert.ToHexString(SHA256.HashData(bytes)),
+                        $"Assets/Textures/{Path.GetFileName(name)}",
+                        parsed,
+                        texture));
         }
 
         if (extension.Equals(".aem", StringComparison.OrdinalIgnoreCase))
@@ -188,6 +275,22 @@ public sealed class BrowserAssetSession
                 null,
                 parsed,
                 scene);
+        }
+
+        if (extension.Equals(".bin", StringComparison.OrdinalIgnoreCase))
+        {
+            GameDataDocument document = new GameDataFormatRegistry().Parse(name, bytes);
+            return new BrowserAssetItem(
+                name,
+                BrowserAssetKind.GameData,
+                bytes,
+                $"{document.Family}; {document.Records.Count} record(s); {document.SupportLevel}; {document.EditableFieldCount} editable field(s)",
+                null,
+                null,
+                null,
+                null,
+                document,
+                new GameDataEditSession(document));
         }
 
         return new BrowserAssetItem(

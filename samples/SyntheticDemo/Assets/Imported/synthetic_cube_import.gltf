@@ -33,7 +33,10 @@
           0,
           6
         ],
-        "sourceSubmeshIndex": 0
+        "sourceSubmeshIndex": 0,
+        "stableSubmeshId": "synthetic_cube:submesh:0000",
+        "workshopDocumentId": "synthetic_cube",
+        "materialSlotIdentity": "material_00"
       }
     }
   ],

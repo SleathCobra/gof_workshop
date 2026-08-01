@@ -96,7 +96,8 @@ public sealed class GltfExporter
             builder.AddPrimitive(
                 scene.Primitives[primitiveIndex],
                 primitiveIndex,
-                texture);
+                texture,
+                ObjExporter.SanitizeFileName(scene.Name));
         }
 
         builder.AddAnimations(scene);
@@ -139,7 +140,8 @@ public sealed class GltfExporter
         public void AddPrimitive(
             ScenePrimitive primitive,
             int primitiveIndex,
-            ExportedTexture? exportedTexture)
+            ExportedTexture? exportedTexture,
+            string workshopDocumentId)
         {
             Vector3[] localPositions = primitive.Positions
                 .Select(position => position - primitive.SourcePivot)
@@ -227,6 +229,9 @@ public sealed class GltfExporter
                         primitive.BoundingSphereRadius,
                     },
                     ["sourceSubmeshIndex"] = primitiveIndex,
+                    ["stableSubmeshId"] = $"{workshopDocumentId}:submesh:{primitiveIndex:D4}",
+                    ["workshopDocumentId"] = workshopDocumentId,
+                    ["materialSlotIdentity"] = primitive.Material.Name,
                 }));
         }
 

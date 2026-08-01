@@ -24,6 +24,26 @@ public sealed class GltfModelImporter
         string? sidecarDirectory = null,
         CancellationToken cancellationToken = default)
     {
+        return ImportCore(bytes, name, sidecarDirectory, sidecarResolver: null, cancellationToken);
+    }
+
+    public ImportedScene ImportWithSidecars(
+        ReadOnlyMemory<byte> bytes,
+        string name,
+        Func<string, byte[]?> sidecarResolver,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sidecarResolver);
+        return ImportCore(bytes, name, sidecarDirectory: null, sidecarResolver, cancellationToken);
+    }
+
+    private static ImportedScene ImportCore(
+        ReadOnlyMemory<byte> bytes,
+        string name,
+        string? sidecarDirectory,
+        Func<string, byte[]?>? sidecarResolver,
+        CancellationToken cancellationToken)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         byte[] json;
         byte[]? glbBuffer = null;
@@ -44,7 +64,7 @@ public sealed class GltfModelImporter
         JsonElement root = document.RootElement;
         ValidateAsset(root);
         List<ModelImportDiagnostic> diagnostics = [];
-        byte[][] buffers = ReadBuffers(root, glbBuffer, sidecarDirectory);
+        byte[][] buffers = ReadBuffers(root, glbBuffer, sidecarDirectory, sidecarResolver);
         JsonElement[] bufferViews = root.TryGetProperty("bufferViews", out JsonElement views)
             ? views.EnumerateArray().ToArray()
             : [];
@@ -52,9 +72,9 @@ public sealed class GltfModelImporter
             ? accessorArray.EnumerateArray().ToArray()
             : [];
         JsonElement[] meshes = root.GetProperty("meshes").EnumerateArray().ToArray();
-        List<(int Mesh, Matrix4x4 World, string Name)> instances = ReadInstances(root, meshes.Length);
+        List<(int Mesh, Matrix4x4 World, string Name, int Node)> instances = ReadInstances(root, meshes.Length);
         List<ImportedPrimitive> primitives = [];
-        foreach ((int meshIndex, Matrix4x4 world, string nodeName) in instances)
+        foreach ((int meshIndex, Matrix4x4 world, string nodeName, int nodeIndex) in instances)
         {
             cancellationToken.ThrowIfCancellationRequested();
             JsonElement mesh = meshes[meshIndex];
@@ -113,7 +133,10 @@ public sealed class GltfModelImporter
                     uvs,
                     colors,
                     indices,
-                    materialName));
+                    materialName,
+                    nodeIndex,
+                    nodeName,
+                    ReadStableId(root, nodeIndex)));
                 primitiveIndex++;
             }
         }
@@ -123,11 +146,13 @@ public sealed class GltfModelImporter
             throw new InvalidDataException("The glTF contains no triangle primitives.");
         }
 
+        IReadOnlyList<ImportedAnimation> animations = ReadAnimations(root, accessors, bufferViews, buffers);
         return new ImportedScene(
             Path.GetFileNameWithoutExtension(name),
             primitives,
             diagnostics,
-            "glTF 2.0 right-handed, Y-up; node transforms baked into geometry");
+            "glTF 2.0 right-handed, Y-up; node transforms baked into geometry",
+            animations);
     }
 
     private static (byte[] Json, byte[]? Binary) ReadGlb(ReadOnlySpan<byte> bytes)
@@ -190,7 +215,11 @@ public sealed class GltfModelImporter
         }
     }
 
-    private static byte[][] ReadBuffers(JsonElement root, byte[]? glbBuffer, string? directory)
+    private static byte[][] ReadBuffers(
+        JsonElement root,
+        byte[]? glbBuffer,
+        string? directory,
+        Func<string, byte[]?>? sidecarResolver)
     {
         List<byte[]> result = [];
         int index = 0;
@@ -219,18 +248,25 @@ public sealed class GltfModelImporter
                 }
                 else
                 {
-                    if (directory is null)
+                    if (sidecarResolver is not null)
+                    {
+                        bytes = sidecarResolver(Uri.UnescapeDataString(uri))
+                            ?? throw new InvalidDataException($"Sidecar buffer '{uri}' was not supplied.");
+                    }
+                    else if (directory is null)
                     {
                         throw new InvalidDataException($"Sidecar buffer '{uri}' was not supplied.");
                     }
-
-                    string path = Path.GetFullPath(Path.Combine(directory, Uri.UnescapeDataString(uri)));
-                    if (!IsWithin(path, directory))
+                    else
                     {
-                        throw new InvalidDataException("A glTF sidecar path escapes its source directory.");
-                    }
+                        string path = Path.GetFullPath(Path.Combine(directory, Uri.UnescapeDataString(uri)));
+                        if (!IsWithin(path, directory))
+                        {
+                            throw new InvalidDataException("A glTF sidecar path escapes its source directory.");
+                        }
 
-                    bytes = File.ReadAllBytes(path);
+                        bytes = File.ReadAllBytes(path);
+                    }
                 }
             }
 
@@ -260,14 +296,188 @@ public sealed class GltfModelImporter
                  StringComparison.OrdinalIgnoreCase));
     }
 
-    private static List<(int Mesh, Matrix4x4 World, string Name)> ReadInstances(JsonElement root, int meshCount)
+    private static string? ReadStableId(JsonElement root, int nodeIndex)
     {
-        List<(int, Matrix4x4, string)> instances = [];
+        if (nodeIndex < 0 || !root.TryGetProperty("nodes", out JsonElement nodes))
+        {
+            return null;
+        }
+
+        JsonElement[] values = nodes.EnumerateArray().ToArray();
+        if ((uint)nodeIndex >= (uint)values.Length ||
+            !values[nodeIndex].TryGetProperty("extras", out JsonElement extras))
+        {
+            return null;
+        }
+
+        if (extras.TryGetProperty("stableSubmeshId", out JsonElement stable) &&
+            stable.ValueKind == JsonValueKind.String)
+        {
+            return stable.GetString();
+        }
+
+        return extras.TryGetProperty("sourceSubmeshIndex", out JsonElement source) && source.TryGetInt32(out int index)
+            ? $"workshop-source-{index}"
+            : null;
+    }
+
+    private static List<ImportedAnimation> ReadAnimations(
+        JsonElement root,
+        JsonElement[] accessors,
+        JsonElement[] views,
+        byte[][] buffers)
+    {
+        if (!root.TryGetProperty("animations", out JsonElement animationsValue))
+        {
+            return [];
+        }
+
+        JsonElement[] nodes = root.TryGetProperty("nodes", out JsonElement nodeArray)
+            ? nodeArray.EnumerateArray().ToArray()
+            : [];
+        List<ImportedAnimation> animations = [];
+        int animationIndex = 0;
+        foreach (JsonElement animation in animationsValue.EnumerateArray())
+        {
+            JsonElement[] samplers = animation.GetProperty("samplers").EnumerateArray().ToArray();
+            Dictionary<int, ImportedTrackBuilder> tracks = [];
+            float duration = 0;
+            foreach (JsonElement channel in animation.GetProperty("channels").EnumerateArray())
+            {
+                int samplerIndex = channel.GetProperty("sampler").GetInt32();
+                JsonElement sampler = Get(samplers, samplerIndex, "animation sampler");
+                string interpolation = sampler.TryGetProperty("interpolation", out JsonElement interpolationValue)
+                    ? interpolationValue.GetString() ?? "LINEAR"
+                    : "LINEAR";
+                if (!string.Equals(interpolation, "LINEAR", StringComparison.Ordinal))
+                {
+                    throw new NotSupportedException(
+                        $"Animation interpolation {interpolation} is unsupported for AEM authoring; only LINEAR is representable.");
+                }
+
+                float[] times = ReadScalar(accessors, views, buffers, sampler.GetProperty("input").GetInt32());
+                if (times.Length == 0 || times.Any(value => value < 0))
+                {
+                    throw new InvalidDataException("glTF animation input times must be finite, non-negative, and non-empty.");
+                }
+
+                duration = Math.Max(duration, times[^1]);
+                JsonElement target = channel.GetProperty("target");
+                int node = target.GetProperty("node").GetInt32();
+                if ((uint)node >= (uint)nodes.Length)
+                {
+                    throw new InvalidDataException("glTF animation targets a node outside the nodes array.");
+                }
+
+                string nodeDisplayName = nodes[node].TryGetProperty("name", out JsonElement nodeName)
+                    ? nodeName.GetString() ?? $"node_{node:D2}"
+                    : $"node_{node:D2}";
+                if (!tracks.TryGetValue(node, out ImportedTrackBuilder? builder))
+                {
+                    builder = new ImportedTrackBuilder(node, nodeDisplayName);
+                    tracks.Add(node, builder);
+                }
+
+                int output = sampler.GetProperty("output").GetInt32();
+                string path = target.GetProperty("path").GetString()
+                    ?? throw new InvalidDataException("glTF animation target path is null.");
+                switch (path)
+                {
+                    case "translation":
+                        {
+                            Vector3[] values = ReadVector3(accessors, views, buffers, output);
+                            RequireMatchingKeyCounts(times, values.Length, path);
+                            builder.SetTranslations(times.Select((time, index) => new ImportedVectorKey(time, values[index])).ToArray());
+                            break;
+                        }
+                    case "rotation":
+                        {
+                            Vector4[] values = ReadVector4(accessors, views, buffers, output);
+                            RequireMatchingKeyCounts(times, values.Length, path);
+                            ImportedQuaternionKey[] keys = values.Select((value, index) =>
+                            {
+                                Quaternion rotation = new(value.X, value.Y, value.Z, value.W);
+                                if (rotation.LengthSquared() < 1e-12f)
+                                {
+                                    throw new InvalidDataException("glTF rotation animation contains a zero quaternion.");
+                                }
+
+                                return new ImportedQuaternionKey(times[index], Quaternion.Normalize(rotation));
+                            }).ToArray();
+                            builder.SetRotations(keys);
+                            break;
+                        }
+                    case "scale":
+                        {
+                            Vector3[] values = ReadVector3(accessors, views, buffers, output);
+                            RequireMatchingKeyCounts(times, values.Length, path);
+                            builder.SetScales(times.Select((time, index) => new ImportedVectorKey(time, values[index])).ToArray());
+                            break;
+                        }
+                    case "weights":
+                        throw new NotSupportedException("Morph-target animation cannot be represented in AEM.");
+                    default:
+                        throw new NotSupportedException($"glTF animation target path '{path}' is unsupported.");
+                }
+            }
+
+            string name = animation.TryGetProperty("name", out JsonElement animationName)
+                ? animationName.GetString() ?? $"animation_{animationIndex:D2}"
+                : $"animation_{animationIndex:D2}";
+            animations.Add(new ImportedAnimation(name, tracks.Values.Select(value => value.Build()).ToArray(), duration));
+            animationIndex++;
+        }
+
+        return animations;
+    }
+
+    private static float[] ReadScalar(JsonElement[] accessors, JsonElement[] views, byte[][] buffers, int index) =>
+        ReadFloatAccessor(accessors, views, buffers, index, "SCALAR", 1).Select(value => value[0]).ToArray();
+
+    private static void RequireMatchingKeyCounts(float[] times, int values, string path)
+    {
+        if (times.Length != values)
+        {
+            throw new InvalidDataException(
+                $"glTF {path} animation has {times.Length} input times but {values} output values.");
+        }
+    }
+
+    private sealed class ImportedTrackBuilder(int node, string name)
+    {
+        private IReadOnlyList<ImportedVectorKey> translations = [];
+        private IReadOnlyList<ImportedQuaternionKey> rotations = [];
+        private IReadOnlyList<ImportedVectorKey> scales = [];
+
+        public void SetTranslations(IReadOnlyList<ImportedVectorKey> value)
+        {
+            if (translations.Count != 0) throw new InvalidDataException("A node has duplicate translation animation channels.");
+            translations = value;
+        }
+
+        public void SetRotations(IReadOnlyList<ImportedQuaternionKey> value)
+        {
+            if (rotations.Count != 0) throw new InvalidDataException("A node has duplicate rotation animation channels.");
+            rotations = value;
+        }
+
+        public void SetScales(IReadOnlyList<ImportedVectorKey> value)
+        {
+            if (scales.Count != 0) throw new InvalidDataException("A node has duplicate scale animation channels.");
+            scales = value;
+        }
+
+        public ImportedAnimationTrack Build() => new(node, name, translations, rotations, scales);
+    }
+
+    private static List<(int Mesh, Matrix4x4 World, string Name, int Node)> ReadInstances(JsonElement root, int meshCount)
+    {
+        List<(int, Matrix4x4, string, int)> instances = [];
         if (!root.TryGetProperty("nodes", out JsonElement nodesValue))
         {
             for (int mesh = 0; mesh < meshCount; mesh++)
             {
-                instances.Add((mesh, Matrix4x4.Identity, $"mesh_{mesh:D2}"));
+                instances.Add((mesh, Matrix4x4.Identity, $"mesh_{mesh:D2}", -1));
             }
 
             return instances;
@@ -311,14 +521,14 @@ public sealed class GltfModelImporter
             string name = node.TryGetProperty("name", out JsonElement nameValue)
                 ? nameValue.GetString() ?? $"node_{index:D2}"
                 : $"node_{index:D2}";
-            instances.Add((mesh, world, name));
+            instances.Add((mesh, world, name, index));
         }
 
         if (instances.Count == 0)
         {
             for (int mesh = 0; mesh < meshCount; mesh++)
             {
-                instances.Add((mesh, Matrix4x4.Identity, $"mesh_{mesh:D2}"));
+                instances.Add((mesh, Matrix4x4.Identity, $"mesh_{mesh:D2}", -1));
             }
         }
 

@@ -86,6 +86,9 @@
     <DataTemplate DataType="documents:LanguageDocumentViewModel">
       <views:LanguageDocumentView />
     </DataTemplate>
+    <DataTemplate DataType="documents:GameDataDocumentViewModel">
+      <views:GameDataDocumentView />
+    </DataTemplate>
     <DataTemplate DataType="documents:UnsupportedDocumentViewModel">
       <views:UnsupportedDocumentView />
     </DataTemplate>

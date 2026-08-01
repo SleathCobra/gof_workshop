@@ -1,42 +1,103 @@
 # Browser-local Workshop host
 
-`src/Gof2Workshop.Browser` is a static Avalonia WebAssembly host. It reuses the clean-room AEI/AEM parsers, normalized scene model, codec adapters, PNG writer and bounded software renderer. It has no server API and does not upload selected data.
+Validated 2026-08-01 with Avalonia 12.1.0, .NET 10 WebAssembly, Brave
+150.1.92.144, and Edge 150.0.4078.105.
+
+`src/Gof2Workshop.Browser` is a static application. Parsing, editing, rendering,
+reconstruction, and export happen in the browser process; there is no asset API
+and no selected file is uploaded.
 
 ## Build and serve
 
-Install the matching .NET WebAssembly workload once, then publish:
-
 ```powershell
 dotnet workload install wasm-tools
-dotnet publish src/Gof2Workshop.Browser/Gof2Workshop.Browser.csproj -c Release -o artifacts/browser
-dotnet serve --directory artifacts/browser --port 5237
+dotnet publish src/Gof2Workshop.Browser/Gof2Workshop.Browser.csproj `
+  -c Release -o artifacts/browser
+.\scripts\serve-browser.ps1 -Directory artifacts/browser -Port 5237
 ```
 
-Any static host that supplies the generated MIME types can serve the directory. Opening `index.html` directly with `file://` is not supported by WebAssembly module loading; use an HTTP static host.
+Open `http://127.0.0.1:5237/`. `file://` is not supported because the browser
+must load JavaScript modules and WebAssembly resources from an HTTP origin. Any
+static host with correct `.wasm` and JavaScript MIME types is sufficient.
 
-## File and privacy model
+The clean final publish contained 206 files / 32,618,127 bytes (31.11 MiB)
+uncompressed. It includes no game asset.
 
-- **Open local files** and drag/drop use browser-granted `IStorageFile` streams.
-- Files are retained only in the current in-memory Inspection Collection, up to 256 MiB each and 512 MiB total.
-- **Export PNG** uses a user-initiated browser save/download stream.
-- The browser never has arbitrary filesystem access.
-- Only the selected profile and small Workshop settings use origin-local `localStorage`; **Clear local settings** removes those keys.
-- Proprietary asset bytes are not persisted across reloads in this milestone.
+## File, storage, and privacy model
 
-## Rendering
+- Browser-authorized pickers and drag/drop create a temporary Inspection
+  Collection. Individual inputs are limited to 256 MiB and the collection to
+  512 MiB.
+- The collection can contain AEI, AEM, BIN, LANG, PNG, glTF/GLB and OBJ/MTL
+  files. Selected glTF sidecars and AEM/AEI companions resolve within the
+  collection without arbitrary filesystem access.
+- Export uses a browser-authorized save/download stream.
+- Versioned workspace archives contain the selected profile, selected asset
+  bytes, material/edit state, and recovery operation logs. Import verifies
+  source hashes before replay.
+- IndexedDB stores a workspace only after **Save local workspace**. The UI shows
+  origin quota/usage and can remove workspace data. Small profile settings use
+  `localStorage`.
+- Clearing local data removes Workshop IndexedDB and setting keys. Browsers may
+  still retain ordinary HTTP cache entries containing only the public app.
 
-AEI pixels decode into Workshop-owned RGBA buffers. AEM scenes use the normalized scene model and a bounded textured software rasterizer; Avalonia presents the result through CanvasKit/WebGL. When a selected AEI stem matches an AEM stem (including known diffuse/LOD suffixes), it is applied locally to all UV-bearing primitives and the heuristic is shown in status text.
+The browser cannot and does not claim unrestricted local filesystem access.
 
-This proves the renderer-neutral scene boundary, but it is not yet a dedicated realtime WebGL scene backend. Desktop OpenGL controls are not referenced by the browser project.
+## Realtime rendering
 
-## Validated publish
+`workshopWebGl.js` is a focused WebGL 2 backend over the same normalized scene,
+camera, material, texture, animation, selection, and diagnostic state used by
+desktop renderers. It owns persistent VAO/VBO/IBO and texture objects, uploads
+static geometry once, schedules frames only when needed, suspends hidden
+content, and disposes resources explicitly.
 
-On 2026-07-31 a trimmed Release publish succeeded with the .NET 10 WebAssembly toolchain. The final static artifact is 170 files / 29.56 MiB uncompressed and contains `index.html`, `main.js`, `dotnet.js`, and the local-settings module. Static delivery of the host bootstrap was verified over HTTP; the final linked files were also checked directly in the publish directory.
+Implemented modes include lit/unlit/solid rendering, decoded AEI texture upload,
+perspective/orthographic camera, orbit/pan/zoom, frame all/selected, animation,
+selection ID picking, isolation, culling, alpha, wireframe, pivots, bounds,
+resize/high-DPI handling, and context-loss reconstruction. The bounded software
+rasterizer remains selectable and is used when WebGL 2 initialization fails.
 
-Interactive automation could not attach to the available in-app browser in this environment because its control bootstrap failed before a browser session was created. Startup, file-picker, drag/drop and visual evidence therefore remain manual-browser validation requirements; build/link and static delivery are verified.
+Final real-browser diagnostics:
 
-## Compatibility and offline
+| Browser | WebGL | Demo meshes/draws | Camera frame | Forced loss/restore |
+|---|---|---:|---:|---|
+| Brave 150.1.92.144 | WebGL 2 / OpenGL ES 3.0 Chromium | 2 / 6 | 1 -> 2, 1.5 ms | passed, one loss |
+| Edge 150.0.4078.105 | WebGL 2 / OpenGL ES 3.0 Chromium | 2 / 6 | 1 -> 2, 0.3 ms | passed, one loss |
 
-The target is current Chromium, Firefox and Safari releases with WebAssembly, WebGL 2/CanvasKit and required browser storage APIs. File System Access is not assumed. Avalonia storage-provider fallbacks supply standards-compatible picker/download behavior.
+Both reported a maximum texture dimension of 16,384. These figures are for the
+small public synthetic smoke scene and are functional evidence, not a dense-model
+benchmark.
 
-All application assets are static, so a service-worker/PWA cache is feasible. No service worker is shipped yet; offline use works only after a host/browser cache has the required files and is not claimed as an installable PWA.
+## Browser editing and authoring
+
+- AEI: decode, region selection, matching-size PNG replacement, undo/redo,
+  raw/BC source-preserving encode, writer reparse/decode validation, and edited
+  AEI download.
+- AEM: inspect and animate; import glTF with selected sidecars, GLB, and OBJ/MTL;
+  author PC AEM v4, reparse, render through WebGL, and download the result.
+- BIN: registry-based family detection, structured field table, size-stable safe
+  edits, undo/redo, source-hash recovery, reparse, and download. Unknown bytes
+  remain in their original locations.
+- Workspace: versioned IndexedDB persistence and portable archive import/export.
+
+The browser UI remains a focused Quick Inspect surface, not the complete desktop
+IDE shell. Full multi-document workbench layout, native process launching, and
+direct Blender integration are desktop-only.
+
+## Repeatable real-browser smoke
+
+```powershell
+.\scripts\browser-smoke.ps1 `
+  -Executable 'C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe' `
+  -Url 'http://127.0.0.1:5237/?smoke=1' `
+  -Screenshot work\screenshots\browser-webgl.png
+```
+
+Additional public-data scenarios are `?smoke=bin`, `?smoke=storage`,
+`?smoke=aei-edit`, and `?smoke=aem-author`. The harness attaches through the
+Chromium DevTools protocol, checks the application-owned smoke state, exercises
+camera input and context loss for 3D cases, and captures a real screenshot.
+
+Firefox was not installed in this environment. Safari cannot be physically
+validated without macOS. Both remain explicit runtime-validation gaps. A service
+worker/PWA shell is feasible but is not shipped in this milestone.

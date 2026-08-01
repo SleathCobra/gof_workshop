@@ -1,6 +1,6 @@
 # Dependency and renderer decisions
 
-Reviewed 2026-07-31.
+Reviewed 2026-08-01.
 
 ## Added dependencies
 
@@ -27,7 +27,9 @@ Official package records:
 
 `Avalonia.Desktop` brings native SkiaSharp, HarfBuzz, Win32, ANGLE, X11, and macOS assets into the application output. `Avalonia.Browser` brings WebAssembly builds of SkiaSharp/CanvasKit and HarfBuzz; it requires the `wasm-tools` workload at publish time. Avalonia does not flow into parser, scene, exporter, CLI, or nonvisual workbench assemblies.
 
-`dotnet list GalaxyOnFire2Workshop.sln package --vulnerable --include-transitive` reported no known vulnerable packages from the configured sources on 2026-07-31.
+`dotnet list GalaxyOnFire2Workshop.sln package --vulnerable --include-transitive` and
+`--deprecated --include-transitive` reported no known vulnerable or deprecated packages from the
+configured sources on 2026-08-01.
 
 ## Preserved internal implementations
 
@@ -65,9 +67,22 @@ Official package records:
 
 ## Browser host decision
 
-Avalonia's official `Avalonia.Browser` host was chosen instead of a parallel HTML framework. It reuses the project’s C# parsers and deterministic software scene renderer and presents through CanvasKit/WebGL. Browser file access is limited to browser-granted `IStorageFile` streams; exports use a browser-authorized save/download stream. The first host retains at most 256 MiB per file and 512 MiB per inspection collection.
+Avalonia's official `Avalonia.Browser` host was chosen instead of a parallel HTML framework. It
+reuses the project’s C# parsers, authoring services, operation logs, and normalized scene model.
+Browser file access is limited to browser-granted `IStorageFile` streams; exports use a
+browser-authorized save/download stream. Inputs remain bounded to 256 MiB per file and 512 MiB per
+inspection collection.
 
-The Release publish is trimmed with compiled Avalonia bindings. The clean 2026-07-31 static publish contains 170 files and is 29.56 MiB uncompressed. A future dedicated WebGL scene backend can consume the same neutral `SceneDocument`; the first milestone deliberately uses bounded software rasterization rather than assuming the desktop `OpenGlControlBase` works under WebAssembly.
+The dedicated scene backend is a small Workshop-owned WebGL 2 ES-module boundary. No JavaScript
+package or game engine was added. JavaScript owns WebGL context calls, GPU objects, scheduling, ID
+picking, and context restoration; C# owns parsing, animation/material snapshots, decoded RGBA, and
+validation. The deterministic software renderer remains the fallback. IndexedDB access similarly
+uses a focused, dependency-free ES module behind source-generated `JSImport` stubs.
+
+The trimmed Release publish uses compiled Avalonia bindings. The clean 2026-08-01 static publish
+contains 206 files and is 31.11 MiB uncompressed after adding the import, workbench, and structured-
+data assemblies. Real Brave and Edge runs validated WebGL 2 camera rendering and forced context
+restoration; no WebGL binding package was required.
 
 ## Codec validation boundary
 
@@ -97,9 +112,10 @@ indices checked into the AEM 16-bit limit, contained sidecars, baked node transf
 rejection of sparse accessors, skinning, morphs and unsupported topology. This keeps the supported
 surface auditable and avoids pulling a general 3D engine into desktop or browser output.
 
-`Gof2Workshop.GameData` adds no package. Its first `.lang` parser/writer uses BCL UTF-8 and
-`BinaryPrimitives` only. The UI remains Avalonia-owned; parser, writer, operations and recovery
-records are platform-neutral.
+`Gof2Workshop.GameData` adds no package. BIN-family readers/writers use BCL text codecs and
+`BinaryPrimitives`; operation/recovery records are platform-neutral. The Avalonia editor consumes
+that model without introducing a grid or MVVM framework.
 
-The browser's tiny settings layer uses .NET's built-in `JSImport` support and browser
-`localStorage`; no JavaScript package or server component was introduced.
+No model-import or Blender package was added. The Blender helper uses Blender's bundled `bpy` and
+glTF add-on only; the desktop detects and invokes an explicitly configured/local executable. The
+core authoring path does not depend on Blender.

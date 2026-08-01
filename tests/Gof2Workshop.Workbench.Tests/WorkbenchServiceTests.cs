@@ -228,19 +228,22 @@ public sealed class WorkbenchServiceTests
         string aeiPath = Path.Combine(temporaryRoot, "texture.aei");
         string aemPath = Path.Combine(temporaryRoot, "model.aem");
         string languagePath = Path.Combine(temporaryRoot, "english.lang");
+        string binPath = Path.Combine(temporaryRoot, "names_synthetic_0.bin");
         string pngPath = Path.Combine(temporaryRoot, "texture.png");
         await File.WriteAllBytesAsync(aeiPath, CreateAeiHeader(0x24));
         await File.WriteAllBytesAsync(aemPath, CreateAemHeader("V4AEMesh", 0x17));
         await File.WriteAllBytesAsync(languagePath, [0, 1, (byte)'A']);
+        await File.WriteAllBytesAsync(binPath, [0, 0, 0, 1, 0, 1, (byte)'A']);
         await File.WriteAllBytesAsync(pngPath, [1, 2, 3]);
         InspectionCollection collection = new(ProfileCatalog.Pc1X);
 
         InspectionCollectionUpdate update = await collection.AddAsync(
-            [aeiPath, aemPath, languagePath, pngPath, aeiPath]);
+            [aeiPath, aemPath, languagePath, binPath, pngPath, aeiPath]);
 
-        Assert.HasCount(3, update.AddedAssets);
-        Assert.HasCount(3, collection.Assets);
+        Assert.HasCount(4, update.AddedAssets);
+        Assert.HasCount(4, collection.Assets);
         Assert.HasCount(1, collection.Assets.Where(asset => asset.Kind == AssetKind.Language));
+        Assert.HasCount(1, collection.Assets.Where(asset => asset.Kind == AssetKind.GameData));
         Assert.HasCount(1, collection.CompanionFiles);
         Assert.IsTrue(collection.Assets.All(asset => asset.Ownership == AssetOwnership.Game));
         WorkspaceDefinition transient = collection.CreateTransientWorkspace();

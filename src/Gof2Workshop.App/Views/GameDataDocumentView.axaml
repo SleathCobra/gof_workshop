@@ -1,0 +1,62 @@
+<UserControl
+    x:Class="Gof2Workshop.App.Views.GameDataDocumentView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:documents="using:Gof2Workshop.App.Documents"
+    x:DataType="documents:GameDataDocumentViewModel">
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <Border Padding="8,6" BorderThickness="0,0,0,1"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="5">
+          <Button Command="{Binding UndoCommand}" Content="Undo" />
+          <Button Command="{Binding RedoCommand}" Content="Redo" />
+          <Button Command="{Binding ExportCommand}" Content="Export validated BIN…" />
+        </StackPanel>
+        <StackPanel>
+          <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding SafetyMessage}" FontSize="11" Foreground="#D6A75C" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+    <TextBox Grid.Row="1" Margin="8,7" PlaceholderText="Search records, field names, or values"
+             Text="{Binding SearchText}" />
+    <Grid Grid.Row="2" Margin="8,0" RowDefinitions="Auto,*">
+      <Border Padding="7,5" Background="#202731">
+        <Grid ColumnDefinitions="70,2*,3*,150,100,65,125,85" ColumnSpacing="7">
+          <TextBlock Text="Record" FontWeight="SemiBold" />
+          <TextBlock Grid.Column="1" Text="Field" FontWeight="SemiBold" />
+          <TextBlock Grid.Column="2" Text="Value" FontWeight="SemiBold" />
+          <TextBlock Grid.Column="3" Text="Type" FontWeight="SemiBold" />
+          <TextBlock Grid.Column="4" Text="Offset" FontWeight="SemiBold" />
+          <TextBlock Grid.Column="5" Text="Bytes" FontWeight="SemiBold" />
+          <TextBlock Grid.Column="6" Text="Confidence" FontWeight="SemiBold" />
+          <TextBlock Grid.Column="7" Text="Edit" FontWeight="SemiBold" />
+        </Grid>
+      </Border>
+      <ListBox Grid.Row="1" ItemsSource="{Binding Fields}" SelectedItem="{Binding SelectedField}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="documents:GameDataFieldRow">
+            <Grid Margin="4,3" ColumnDefinitions="70,2*,3*,150,100,65,125,85" ColumnSpacing="7">
+              <TextBlock Text="{Binding RecordIndex}" />
+              <TextBlock Grid.Column="1" Text="{Binding Field.Name}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="2" Text="{Binding Value}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="3" Text="{Binding Field.Kind}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="4" Text="{Binding Offset}" />
+              <TextBlock Grid.Column="5" Text="{Binding Length}" />
+              <TextBlock Grid.Column="6" Text="{Binding Field.Confidence}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="7" Text="{Binding EditStatus}" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Grid>
+    <Border Grid.Row="3" Margin="8" Padding="8" Background="#18212B" CornerRadius="3">
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+        <TextBlock VerticalAlignment="Center" Text="Selected value" />
+        <TextBox Grid.Column="1" Text="{Binding EditValue}" />
+        <Button Grid.Column="2" Command="{Binding ApplyCommand}" Content="Apply and reparse" />
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

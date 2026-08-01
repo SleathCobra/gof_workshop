@@ -29,4 +29,32 @@ internal static class BrowserBitmapFactory
 
         return bitmap;
     }
+
+    public static RgbaImage LoadRgba(Stream input)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        using Bitmap source = new(input);
+        using WriteableBitmap converted = new(
+            source.PixelSize,
+            new Vector(96, 96),
+            PixelFormat.Rgba8888,
+            AlphaFormat.Unpremul);
+        using ILockedFramebuffer framebuffer = converted.Lock();
+        source.CopyPixels(framebuffer);
+        int width = source.PixelSize.Width;
+        int height = source.PixelSize.Height;
+        RgbaImage image = new(width, height);
+        byte[] row = new byte[checked(width * 4)];
+        for (int y = 0; y < height; y++)
+        {
+            Marshal.Copy(
+                IntPtr.Add(framebuffer.Address, y * framebuffer.RowBytes),
+                row,
+                0,
+                row.Length);
+            row.CopyTo(image.PixelBytes.Slice(y * row.Length, row.Length));
+        }
+
+        return image;
+    }
 }

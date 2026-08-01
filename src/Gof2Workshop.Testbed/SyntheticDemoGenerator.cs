@@ -71,6 +71,7 @@ internal static class SyntheticDemoGenerator
         WriteLegacyAemFixtures(Path.Combine(root, "Assets", "Models"));
         WriteStaticV5Aem(Path.Combine(root, "Assets", "Models", "synthetic_v5.aem"));
         WriteLanguageTable(Path.Combine(root, "Assets", "Data", "synthetic.lang"));
+        WriteGameDataFixtures(Path.Combine(root, "Assets", "Data"));
         WriteImportFixtures(root);
 
         string source = Path.Combine(root, "Assets", "Textures", "synthetic_raw.aei");
@@ -359,6 +360,110 @@ internal static class SyntheticDemoGenerator
         ]);
         using FileStream output = File.Create(path);
         new LanguageTableWriter().Write(table, output);
+    }
+
+    private static void WriteGameDataFixtures(string directory)
+    {
+        WriteBinary("names_synthetic_0.bin", writer =>
+        {
+            WriteInt32Big(writer, 2);
+            WriteModifiedUtf(writer, "Ayla");
+            WriteModifiedUtf(writer, "Boro");
+        });
+        WriteBinary("items.bin", writer =>
+        {
+            WriteInt32Big(writer, 0);
+            WriteInt32Big(writer, 0);
+            WriteInt32Big(writer, 0);
+        });
+        WriteBinary("ships.bin", writer =>
+        {
+            for (int value = 0; value < 9; value++) WriteInt32Big(writer, 100 + value);
+        });
+        WriteBinary("systems.bin", writer =>
+        {
+            WriteModifiedUtf(writer, "Aurora");
+            for (int value = 0; value < 8; value++) WriteInt32Big(writer, value);
+            for (int value = 0; value < 4; value++) WriteInt32Big(writer, 0);
+        });
+        WriteBinary("stations.bin", writer =>
+        {
+            WriteModifiedUtf(writer, "Horizon");
+            for (int value = 0; value < 4; value++) WriteInt32Big(writer, value + 1);
+        });
+        WriteBinary("agents.bin", writer =>
+        {
+            WriteModifiedUtf(writer, "Nia");
+            for (int value = 0; value < 8; value++) WriteInt32Big(writer, value);
+            WriteInt32Big(writer, 0);
+        });
+        WriteBinary("wanted.bin", writer =>
+        {
+            WriteModifiedUtf(writer, "Rook");
+            for (int value = 0; value < 13; value++) WriteInt32Big(writer, value);
+            WriteInt32Big(writer, 0);
+        });
+        WriteBinary("ticker.bin", writer =>
+        {
+            for (int value = 0; value < 7; value++) WriteInt32Big(writer, value);
+        });
+        WriteBinary("shipparts.bin", writer =>
+        {
+            writer.WriteByte(1);
+            writer.WriteByte(0);
+        });
+        WriteBinary("stationparts.bin", writer =>
+        {
+            writer.WriteByte(1);
+            WriteInt16Big(writer, 5);
+            writer.WriteByte(0);
+        });
+        WriteBinary("synthetic_weapons.bin", writer =>
+        {
+            WriteInt16Little(writer, 7);
+            WriteInt16Little(writer, 1);
+            WriteInt16Little(writer, 1);
+            WriteInt16Little(writer, 10);
+            WriteInt16Little(writer, 20);
+            WriteInt16Little(writer, 30);
+        });
+        WriteBinary("collision.bin", writer => writer.Write([0x43, 0x43, 0x30, 0x31]));
+        WriteBinary("docks.bin", writer => writer.Write([0x44, 0x4F, 0x43, 0x4B]));
+        WriteBinary("weapons.bin", writer => writer.Write([0x57, 0x50, 0x4E, 0x31]));
+
+        void WriteBinary(string name, Action<Stream> write)
+        {
+            using FileStream output = File.Create(Path.Combine(directory, name));
+            write(output);
+        }
+    }
+
+    private static void WriteInt32Big(Stream output, int value)
+    {
+        Span<byte> bytes = stackalloc byte[4];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(bytes, value);
+        output.Write(bytes);
+    }
+
+    private static void WriteInt16Big(Stream output, short value)
+    {
+        Span<byte> bytes = stackalloc byte[2];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt16BigEndian(bytes, value);
+        output.Write(bytes);
+    }
+
+    private static void WriteInt16Little(Stream output, short value)
+    {
+        Span<byte> bytes = stackalloc byte[2];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(bytes, value);
+        output.Write(bytes);
+    }
+
+    private static void WriteModifiedUtf(Stream output, string value)
+    {
+        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(value);
+        WriteInt16Big(output, checked((short)bytes.Length));
+        output.Write(bytes);
     }
 
     private static void WriteImportFixtures(string root)

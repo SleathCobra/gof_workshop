@@ -5,6 +5,7 @@ public enum AssetKind
     Aei,
     Aem,
     Language,
+    GameData,
 }
 
 public sealed record AssetInventoryEntry(

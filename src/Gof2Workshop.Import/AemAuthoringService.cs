@@ -8,6 +8,46 @@ namespace Gof2Workshop.Import;
 public sealed class AemAuthoringService
 {
     public AemAuthoringResult Author(
+        AemAuthoringProject project,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        AemAuthoringProjectSnapshot source = project.Current;
+        ImportedScene imported = new(
+            source.Name,
+            source.Submeshes.Select(value => value.Geometry).ToArray(),
+            [],
+            "Workshop authoring coordinates: right-handed, Y-up, metres");
+        AemAuthoringResult initial = Author(
+            imported,
+            new AemAuthoringOptions(source.Version),
+            cancellationToken);
+        AemSubmesh[] authored = initial.File.Submeshes
+            .Select((value, index) => value with
+            {
+                Pivot = source.Submeshes[index].Pivot,
+                BoundingSphere = source.Submeshes[index].Bounds,
+                Animation = AemAuthoringProject.ToAnimation(source.Submeshes[index], source.Version),
+            })
+            .ToArray();
+        AemFile file = initial.File with { Submeshes = authored };
+        using MemoryStream output = new();
+        new AemWriter().Write(file, output, cancellationToken);
+        byte[] bytes = output.ToArray();
+        using MemoryStream input = new(bytes, writable: false);
+        AemFile reparsed = new AemParser().Parse(input, source.Name + ".aem", AemParserOptions.Pc1X, cancellationToken);
+        SceneDocument scene = new AemSceneConverter().Convert(reparsed);
+        if (reparsed.Submeshes.Count != source.Submeshes.Count ||
+            reparsed.Submeshes.SelectMany(value => value.Positions).Any(position =>
+                !float.IsFinite(position.X) || !float.IsFinite(position.Y) || !float.IsFinite(position.Z)))
+        {
+            throw new InvalidDataException("Authoring validation failed after writer reparse.");
+        }
+
+        return new AemAuthoringResult(file, reparsed, scene, bytes, initial.Diagnostics);
+    }
+
+    public AemAuthoringResult Author(
         ImportedScene imported,
         AemAuthoringOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -17,6 +57,13 @@ public sealed class AemAuthoringService
         if (options.Version is not (AemVersion.V4 or AemVersion.V5))
         {
             throw new NotSupportedException("Custom model authoring currently targets AEM v4 or v5 only.");
+        }
+
+        if (imported.Animations is { Count: > 0 })
+        {
+            AemAuthoringProject animated = new(imported.Name, options.Version);
+            animated.AddImportedScene(imported);
+            return Author(animated, cancellationToken);
         }
 
         List<ModelImportDiagnostic> diagnostics = [.. imported.Diagnostics];
@@ -132,6 +179,26 @@ public sealed class AemAuthoringService
         if (primitive.Positions.Any(value => !IsFinite(value)))
         {
             throw new InvalidDataException($"Primitive '{primitive.Name}' contains non-finite positions.");
+        }
+
+        if (primitive.Normals is { } normals &&
+            (normals.Length != primitive.Positions.Length || normals.Any(value => !IsFinite(value))))
+        {
+            throw new InvalidDataException($"Primitive '{primitive.Name}' has invalid or non-finite normals.");
+        }
+
+        if (primitive.TextureCoordinates is { } uvs &&
+            (uvs.Length != primitive.Positions.Length || uvs.Any(value => !float.IsFinite(value.X) || !float.IsFinite(value.Y))))
+        {
+            throw new InvalidDataException($"Primitive '{primitive.Name}' has invalid or non-finite UV coordinates.");
+        }
+
+        if (primitive.Colors is { } colors &&
+            (colors.Length != primitive.Positions.Length || colors.Any(value =>
+                !float.IsFinite(value.X) || !float.IsFinite(value.Y) ||
+                !float.IsFinite(value.Z) || !float.IsFinite(value.W))))
+        {
+            throw new InvalidDataException($"Primitive '{primitive.Name}' has invalid auxiliary float4 values.");
         }
     }
 

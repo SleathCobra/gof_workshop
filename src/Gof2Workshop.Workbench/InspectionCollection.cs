@@ -75,7 +75,7 @@ public sealed class InspectionCollection
         {
             cancellationToken.ThrowIfCancellationRequested();
             string extension = Path.GetExtension(path).ToLowerInvariant();
-            if (extension is ".aei" or ".aem" or ".lang")
+            if (extension is ".aei" or ".aem" or ".lang" or ".bin")
             {
                 try
                 {
@@ -115,7 +115,7 @@ public sealed class InspectionCollection
                         "Verify the file and selected profile."));
                 }
             }
-            else if (extension is ".png" or ".gltf" or ".glb" or ".obj" or ".mtl" or ".bin")
+            else if (extension is ".png" or ".gltf" or ".glb" or ".obj" or ".mtl")
             {
                 string fullPath = Path.GetFullPath(path);
                 if (companions.Add(fullPath))

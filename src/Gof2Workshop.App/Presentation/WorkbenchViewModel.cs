@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using Gof2Workshop.App.Documents;
 using Gof2Workshop.Binary;
 using Gof2Workshop.Core;
+using Gof2Workshop.Formats.Aem;
 using Gof2Workshop.Import;
 using Gof2Workshop.Workbench;
 
@@ -81,6 +82,10 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
             dialogs,
             outputService,
             problemService));
+        registry.Register(new GameDataEditorProvider(
+            dialogs,
+            outputService,
+            problemService));
         registry.Register(new AeiEditorProvider(
             dialogs,
             outputService,
@@ -105,6 +110,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
             CreateWorkspaceFromInspectionAsync,
             () => inspectionAssets.Count > 0);
         ImportModelCommand = new AsyncRelayCommand(ImportModelAsync);
+        BlenderIntegrationCommand = new AsyncRelayCommand(CheckBlenderIntegrationAsync);
         CloseWorkspaceCommand = new AsyncRelayCommand(CloseWorkspaceAsync, () => Workspace is not null);
         SelectGameFolderCommand = new AsyncRelayCommand(
             SelectGameFolderAsync,
@@ -208,7 +214,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
 
     public IReadOnlyList<AssetPlatformProfile> Profiles => ProfileCatalog.All;
 
-    public IReadOnlyList<string> KindFilters { get; } = ["All", "AEI", "AEM", "Language"];
+    public IReadOnlyList<string> KindFilters { get; } = ["All", "AEI", "AEM", "Language", "BIN"];
 
     public IReadOnlyList<TutorialDefinition> Tutorials => TutorialCatalog.All;
 
@@ -546,6 +552,8 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
 
     public System.Windows.Input.ICommand ImportModelCommand { get; }
 
+    public System.Windows.Input.ICommand BlenderIntegrationCommand { get; }
+
     public System.Windows.Input.ICommand CloseWorkspaceCommand { get; }
 
     public System.Windows.Input.ICommand SelectGameFolderCommand { get; }
@@ -835,6 +843,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
                 AssetKind.Aei => Path.Combine("Assets", "Textures"),
                 AssetKind.Aem => Path.Combine("Assets", "Models"),
                 AssetKind.Language => Path.Combine("Assets", "Data"),
+                AssetKind.GameData => Path.Combine("Assets", "Data"),
                 _ => Path.Combine("Assets", "Other"),
             };
             string targetDirectory = Path.Combine(modRoot, category);
@@ -1750,6 +1759,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
             "AEI" => AssetKind.Aei,
             "AEM" => AssetKind.Aem,
             "Language" => AssetKind.Language,
+            "BIN" => AssetKind.GameData,
             _ => null,
         };
         AssetSupport? support = SupportFilter switch
@@ -2027,37 +2037,65 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     private async Task ImportModelAsync()
     {
         IReadOnlyList<string> selected = await dialogs.PickAssetFilesAsync(
-            "Import glTF, GLB, or OBJ model");
-        string? source = selected.FirstOrDefault(path => Path.GetExtension(path).Equals(".gltf", StringComparison.OrdinalIgnoreCase) ||
+            "Compose AEM from AEM, glTF, GLB, or OBJ models");
+        string[] sources = selected.Where(path => Path.GetExtension(path).Equals(".aem", StringComparison.OrdinalIgnoreCase) ||
+            Path.GetExtension(path).Equals(".gltf", StringComparison.OrdinalIgnoreCase) ||
             Path.GetExtension(path).Equals(".glb", StringComparison.OrdinalIgnoreCase) ||
-            Path.GetExtension(path).Equals(".obj", StringComparison.OrdinalIgnoreCase));
-        if (source is null)
+            Path.GetExtension(path).Equals(".obj", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (sources.Length == 0)
         {
             return;
         }
 
         try
         {
-            StatusMessage = $"Validating {Path.GetFileName(source)} for AEM v4…";
+            StatusMessage = $"Composing {sources.Length} source model(s) for AEM v4…";
             AemAuthoringResult result = await Task.Run(() =>
             {
-                ImportedScene imported = Path.GetExtension(source).ToLowerInvariant() switch
+                AemAuthoringProject project = new(
+                    Path.GetFileNameWithoutExtension(sources[0]),
+                    AemVersion.V4,
+                    ProfileCatalog.Pc1X.Id);
+                foreach (string source in sources)
                 {
-                    ".gltf" or ".glb" => new GltfModelImporter().Import(source),
-                    ".obj" => new ObjModelImporter().Import(source),
-                    _ => throw new NotSupportedException("Choose glTF, GLB, or OBJ."),
-                };
-                return new AemAuthoringService().Author(imported);
+                    switch (Path.GetExtension(source).ToLowerInvariant())
+                    {
+                        case ".aem":
+                            AemFile parsed = new AemParser().Parse(
+                                source,
+                                new AemParserOptions(SelectedProfile));
+                            project.AddFromAem(parsed);
+                            break;
+                        case ".gltf":
+                        case ".glb":
+                            project.AddImportedScene(new GltfModelImporter().Import(source));
+                            break;
+                        case ".obj":
+                            project.AddImportedScene(new ObjModelImporter().Import(source));
+                            break;
+                        default:
+                            throw new NotSupportedException($"Unsupported model source '{Path.GetExtension(source)}'.");
+                    }
+                }
+
+                if (project.Current.Submeshes.Count == 0)
+                {
+                    throw new InvalidDataException("The selected files did not contain any representable submeshes.");
+                }
+
+                return project.Build();
             });
             string suggestedStart = Workspace is null
-                ? Path.GetDirectoryName(source) ?? Environment.CurrentDirectory
+                ? Path.GetDirectoryName(sources[0]) ?? Environment.CurrentDirectory
                 : Path.Combine(
                     workspaceService.ResolveModPath(Workspace, Workspace.ModRoot),
                     "Assets",
                     "Models");
             string? destination = await dialogs.SaveFileAsync(
                 "Save validated AEM v4 copy",
-                Path.GetFileNameWithoutExtension(source) + ".aem",
+                Path.GetFileNameWithoutExtension(sources[0]) + ".aem",
                 "aem",
                 suggestedStart);
             if (destination is null)
@@ -2071,11 +2109,24 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
                     "Custom models cannot be written beneath the immutable game asset root.");
             }
 
-            await File.WriteAllBytesAsync(destination, result.Bytes);
+            string temporary = destination + ".tmp-" + Guid.NewGuid().ToString("N");
+            try
+            {
+                await File.WriteAllBytesAsync(temporary, result.Bytes);
+                File.Move(temporary, destination, overwrite: true);
+            }
+            finally
+            {
+                if (File.Exists(temporary))
+                {
+                    File.Delete(temporary);
+                }
+            }
             outputService.Write(
                 OutputLevel.Information,
                 "Model import",
-                $"Authored AEM v4, reparsed, and scene-validated: {Path.GetFileName(destination)}; " +
+                $"Composed {sources.Length} source model(s) into AEM v4, reparsed, and scene-validated: " +
+                $"{Path.GetFileName(destination)}; " +
                 $"{result.Reparsed.Submeshes.Count} submeshes; " +
                 $"{result.Reparsed.Submeshes.Sum(value => value.Positions.Length):N0} vertices.");
             foreach (ModelImportDiagnostic diagnostic in result.Diagnostics)
@@ -2110,16 +2161,61 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         {
             problemService.Add(new ProblemEntry(
                 ProblemSeverity.Error,
-                Path.GetFileName(source),
-                source,
+                Path.GetFileName(sources[0]),
+                sources[0],
                 "Model import",
                 exception.Message,
                 null,
                 "glTF/OBJ conversion",
                 "Use triangle topology, 16-bit representable counts, and supported vertex channels."));
             outputService.Write(OutputLevel.Error, "Model import", exception.Message);
-            StatusMessage = "Model import failed validation";
+            StatusMessage = "AEM composition failed validation";
         }
+    }
+
+    private async Task CheckBlenderIntegrationAsync()
+    {
+        string[] candidates =
+        [
+            Environment.GetEnvironmentVariable("GOF2_WORKSHOP_BLENDER") ?? string.Empty,
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                "Blender Foundation", "Blender 5.1", "blender.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                "Blender Foundation", "Blender 5.0", "blender.exe"),
+        ];
+        string? executable = candidates.FirstOrDefault(File.Exists);
+        if (executable is null)
+        {
+            StatusMessage = "Blender was not detected";
+            outputService.Write(
+                OutputLevel.Warning,
+                "Blender",
+                "Blender was not detected. Set GOF2_WORKSHOP_BLENDER to its executable path.");
+            return;
+        }
+
+        using Process process = new()
+        {
+            StartInfo = new ProcessStartInfo(executable, "--version")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            },
+        };
+        process.Start();
+        string version = await process.StandardOutput.ReadLineAsync() ?? "Blender (version unavailable)";
+        await process.WaitForExitAsync();
+        string addOn = Path.Combine(Environment.CurrentDirectory, "tools", "blender", "gof2_workshop", "__init__.py");
+        outputService.Write(
+            process.ExitCode == 0 ? OutputLevel.Information : OutputLevel.Error,
+            "Blender",
+            $"{version}; executable: {executable}; Workshop add-on source: " +
+            (File.Exists(addOn) ? addOn : "not found"));
+        StatusMessage = process.ExitCode == 0
+            ? $"{version} detected"
+            : $"Blender validation exited with code {process.ExitCode}";
     }
 
     private void AddRecentStandaloneFile(string path)

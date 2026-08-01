@@ -242,10 +242,37 @@ internal static class Program
             new AemParserOptions(ResolveProfile(args)),
             cancellationToken);
         SceneDocument scene = new AemSceneConverter().Convert(file);
+        string? texturePath = args.GetOption("texture");
+        GltfTextureAssignment[] assignments = [];
+        if (!string.IsNullOrWhiteSpace(texturePath))
+        {
+            AeiFile textureFile = new AeiParser().Parse(
+                texturePath,
+                new AeiParserOptions(ResolveProfile(args)),
+                cancellationToken);
+            RgbaImage texture = new AeiTextureDecoder().DecodeAtlas(textureFile, cancellationToken);
+            string cacheKey = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(textureFile.Payload));
+            assignments = Enumerable.Range(0, scene.Primitives.Count)
+                .Select(index => new GltfTextureAssignment(
+                    index,
+                    cacheKey,
+                    Path.GetFileNameWithoutExtension(texturePath),
+                    texture,
+                    HasAlpha(texture)))
+                .ToArray();
+        }
 
         if (format is "gltf" or "both")
         {
-            GltfExportResult result = new GltfExporter().Export(scene, output, cancellationToken: cancellationToken);
+            GltfExportResult result = assignments.Length == 0
+                ? new GltfExporter().Export(scene, output, cancellationToken: cancellationToken)
+                : new GltfExporter().ExportWithMaterials(
+                    scene,
+                    output,
+                    baseName: null,
+                    assignments,
+                    cancellationToken);
             logger.Info(
                 "aem.gltf_exported",
                 result.AnimationStatus,
@@ -347,6 +374,20 @@ internal static class Program
         return ProfileCatalog.Resolve(args.GetOption("profile", ProfileCatalog.Pc1X.Id));
     }
 
+    private static bool HasAlpha(RgbaImage image)
+    {
+        ReadOnlySpan<byte> pixels = image.ReadOnlyPixelBytes;
+        for (int offset = 3; offset < pixels.Length; offset += 4)
+        {
+            if (pixels[offset] < byte.MaxValue)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static int CompareCorpora(
         CliArguments args,
         CliLogger logger,
@@ -416,7 +457,7 @@ internal static class Program
               aei-info <file> [--profile profile-id] [--research]
               aei-export <file> [--output work/name-aei] [--profile profile-id]
               aem-info <file> [--profile profile-id] [--research]
-              aem-export <file> [--format gltf|obj|both] [--output work/name-aem]
+              aem-export <file> [--format gltf|obj|both] [--texture companion.aei] [--output work/name-aem]
               aem-preview <file> [--output work/name-preview.png] [--size 1024] [--time seconds]
               view <file> [--output path]
               validate-corpus <folder> [--decode] [--roundtrip] [--limit N] [--profile profile-id] [--json path]

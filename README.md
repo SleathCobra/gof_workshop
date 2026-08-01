@@ -26,9 +26,10 @@ Validated locally against an ignored Galaxy on Fire 2 corpus:
 - Validated Add to Mod and replacement staging with an audited operation manifest; loss-preserving AEI and reconstructed AEM v1-v5 writers never overwrite the game root.
 - Five explicit, manually selected profiles for GOF2 PC/Android/iOS/macOS and isolated GOF3D iOS research, with all-corpus parse/decode/writer reports.
 - Workspace-free Quick Inspect for multiple files/folders, drag-and-drop, command-line paths, temporary relationships, and explicit conversion into a user-owned workspace.
-- A static browser-local WebAssembly host for bounded AEI/AEM inspection, filename-related texture preview, browser-authorized PNG download, and local-only settings.
-- glTF 2.0/GLB and OBJ import through a neutral imported scene, with validated static AEM v4/v5 authoring, reparse, scene conversion, and preview.
-- A first safe structured-data editor for big-endian UTF-8 `.lang` tables, including operation undo/redo, immutable originals, validated atomic copy export, and exact reconstruction of all 22 available tables.
+- A static browser-local WebAssembly host with a dedicated realtime WebGL 2 viewport, software fallback, AEI editing, AEM authoring, structured BIN editing, IndexedDB recovery, and browser-authorized downloads. Real Brave and Edge smoke runs cover rendering, camera input, and WebGL context restoration.
+- glTF 2.0/GLB, OBJ/MTL, and existing-AEM import through a neutral authoring model, with multi-source composition, transform animation reimport/editing, validated PC AEM v4/v5 writing, reparse, scene conversion, and preview.
+- Safe structured editors for `.lang` and every discovered GOF2 `.bin` family. All 136 BIN files are classified and reproduce byte-for-byte unchanged; semantically unresolved families remain loss-preserving/raw rather than exposing guessed fields.
+- A Blender 5.1 helper add-on plus a real headless geometry/material/animation round trip using stable Workshop metadata.
 - A restartable in-application tutorial panel using the public CC0 synthetic corpus.
 
 See [the anonymized local corpus report](docs/compatibility/local-corpus-report.md) for exact results.
@@ -148,13 +149,16 @@ For standalone inspection, use **File > Open Files for Quick Inspect**, drag fil
 window, or pass paths on the command line. This does not require a workspace. Selected files are
 read-only; **Create Workspace from Quick Inspect Files** makes explicit user-owned copies.
 
-**Asset > Import Custom Model** accepts triangle glTF 2.0, GLB, OBJ/MTL and writes a validated PC
-AEM v4 copy (v5 is available through the importer/CLI target). Unsupported skinning, morphs,
-sparse accessors, topology and non-representable 16-bit counts fail explicitly.
+**Asset > Create / Compose AEM** accepts multiple triangle glTF 2.0, GLB, OBJ/MTL, and existing
+AEM sources, composes their submeshes, and atomically writes a validated PC AEM v4 copy (v5 is
+available through the platform-neutral authoring model/CLI target). Unsupported skinning, morphs,
+sparse accessors, topology, and non-representable 16-bit counts fail explicitly.
 
-`.lang` files appear as structured assets. Original tables are read-only; mod-owned copies permit
-per-entry edits with Ctrl+Z/Ctrl+Y. **Save Copy** serializes, reparses, compares every entry, and
-only then atomically commits outside the game root.
+`.lang` and `.bin` files appear as structured assets. Original tables are read-only; mod-owned
+copies permit size-stable safe-field edits with Ctrl+Z/Ctrl+Y. Export writes atomically only after
+reparse and outside the game root. Unknown bytes stay at their original offsets. Collision, docking,
+and platform weapon-table families currently remain loss-preserving/raw because their field meanings
+are not safe to infer.
 
 Select an AEI region and use **Import Region** for a matching PNG. Undo/redo operates on edit
 operations; **Validate** encodes using the preserved codec, reconstructs, reparses, and decodes the
@@ -202,8 +206,8 @@ The Windows-only native-picker smoke launches the real Avalonia application, acc
 | `Gof2Workshop.Formats.Aem` | AEM v1-v5 model, geometry, bounds, animation parser, structural writer, and immutable snapshot writer |
 | `Gof2Workshop.Scene` | Parser-neutral normalized scene representation and winding diagnostics |
 | `Gof2Workshop.Export` | PNG, atlas overlay, OBJ, glTF, and software model preview |
-| `Gof2Workshop.Import` | Bounded glTF/GLB/OBJ import and validated static AEM v4/v5 authoring |
-| `Gof2Workshop.GameData` | Safe structured tables; currently big-endian UTF-8 language read/write and edit operations |
+| `Gof2Workshop.Import` | Bounded glTF/GLB/OBJ/AEM composition, operation-based submesh/transform authoring, and validated AEM v4/v5 output |
+| `Gof2Workshop.GameData` | BIN-family registry, safe structural/semantic models, loss-preserving writers, operations, recovery, and validation |
 | `Gof2Workshop.Workbench` | UI-independent workspace, indexing, search, Problems/Output, document/provider, layout, and path-safety services |
 | `Gof2Workshop.App` | Avalonia 12 desktop IDE shell and interactive AEI/AEM documents |
 | `Gof2Workshop.Browser` | Static browser-local Avalonia WebAssembly Quick Inspect host |
@@ -222,11 +226,11 @@ Parser projects do not depend on Avalonia or the CLI. The desktop application di
 - Pane drag handles detach Explorer, Inspector, and bottom tools into owned windows and persist that state. Arbitrary docking zones/tab groups are not implemented.
 - AEI writing supports raw RGBA and BC1/BC2/BC3 source-preserving encoding and same-size region/full-atlas edits. PVRTC/ETC/ATC encoding, atlas resizing, and metadata layout edits are not implemented.
 - AEM writing serializes the parsed v1-v5 geometry, bounds, supported channels, and animation records. All 752 unchanged corpus models round-trip byte-for-byte. The workbench does not yet expose geometry-authoring controls; v1 topology edits must retain a representable source strip grouping.
-- Custom glTF/GLB/OBJ import currently authors static v4/v5 AEM geometry. Skinning, morph targets, arbitrary node hierarchy, glTF animation reimport and automated Blender round trips remain explicit limitations.
-- The browser host uses a bounded textured software rasterizer presented by CanvasKit/WebGL, not yet a realtime custom WebGL scene backend. Asset bytes are session-only; small settings use origin-local storage.
+- Custom glTF/GLB/OBJ/AEM composition authors v4/v5 geometry and confirmed transform animation. Skinning, morph targets, arbitrary node hierarchy, and non-linear glTF interpolation remain explicit limitations. Blender may bake unequal curve keys during export, so its round trip is structurally validated but can be resampled/lossy.
+- The browser host uses a dedicated realtime WebGL 2 renderer with persistent GPU resources; a bounded software rasterizer remains as fallback. IndexedDB persistence is explicit and versioned, and the collection remains bounded. Firefox/Safari have not been physically tested here.
 - The macOS 3.2-core VAO/shader path is implemented and packages, but this environment has no physical Mac; hardware validation remains required and the software fallback is retained.
 - Mission authoring is disabled: corpus and runtime evidence indicates procedural side missions plus executable campaign `LevelScript` logic, with no confirmed declarative mission container.
-- `.lang` is the only structured binary format currently enabled for writing. Other `.bin` database families remain immutable until record boundaries, references and unknown fields are validated.
+- All discovered GOF2 `.bin` files are classified and support exact unchanged writing. Confirmed/structurally bounded fields are editable without resizing; collision, docking, and platform weapon tables remain loss-preserving advanced/raw, and new record creation is disabled until IDs, counts, references, and engine limits are proven.
 
 ## Research and licensing
 
@@ -238,6 +242,7 @@ Parser projects do not depend on Avalonia or the CLI. The desktop application di
 - [Nondestructive editing foundation](docs/architecture/nondestructive-editing.md)
 - [Browser-local host](docs/browser.md)
 - [Cross-platform compatibility](docs/compatibility/cross-platform-comparison.md)
+- [Browser, BIN, and AEM authoring validation](docs/compatibility/browser-bin-aem-authoring-report.md)
 - [Cross-platform workbench validation report](docs/compatibility/cross-platform-workbench-report.md)
 - [Game-data research](docs/research/game-data/corpus-inventory.md)
 - [Mission blocker report](docs/research/missions/limitations.md)

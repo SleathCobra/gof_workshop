@@ -55,6 +55,60 @@ public sealed class LanguageEditorProvider : IDocumentEditorProvider
     }
 }
 
+public sealed class GameDataEditorProvider : IDocumentEditorProvider
+{
+    private readonly IUserDialogService dialogs;
+    private readonly IOutputService output;
+    private readonly IProblemService problems;
+
+    public GameDataEditorProvider(
+        IUserDialogService dialogs,
+        IOutputService output,
+        IProblemService problems)
+    {
+        this.dialogs = dialogs;
+        this.output = output;
+        this.problems = problems;
+    }
+
+    public string Name => "Structured BIN Editor";
+
+    public int Priority => 110;
+
+    public bool CanOpen(IndexedAsset asset) => asset.Kind == Core.AssetKind.GameData;
+
+    public async Task<IDocument> OpenAsync(EditorOpenContext context)
+    {
+        const int maximumBytes = 256 * 1024 * 1024;
+        FileInfo information = new(context.Asset.FullPath);
+        if (information.Length > maximumBytes)
+        {
+            throw new InvalidDataException("Structured BIN documents are limited to 256 MiB.");
+        }
+
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        byte[] bytes = await File.ReadAllBytesAsync(context.Asset.FullPath, context.CancellationToken);
+        GameDataDocument document = new GameDataFormatRegistry().Parse(context.Asset.FileName, bytes);
+        foreach (string warning in document.Warnings)
+        {
+            problems.Add(ProblemEntry.Warning(context.Asset, warning, "Review the binary/research details before editing."));
+        }
+
+        output.Write(
+            OutputLevel.Information,
+            "Open",
+            $"{context.Asset.FileName}: {document.Family}; {document.Records.Count:N0} records; " +
+            $"{document.EditableFieldCount:N0} safe fields parsed in {stopwatch.Elapsed.TotalMilliseconds:N0} ms.");
+        return new GameDataDocumentViewModel(
+            context.Asset,
+            document,
+            context.Workspace,
+            dialogs,
+            output,
+            problems);
+    }
+}
+
 public sealed class AeiEditorProvider : IDocumentEditorProvider
 {
     private readonly IUserDialogService dialogs;

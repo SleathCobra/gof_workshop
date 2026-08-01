@@ -39,6 +39,23 @@ public sealed class ModelImportTests
     }
 
     [TestMethod]
+    public void BrowserStyleSidecarResolverImportsGltfWithoutFilesystemAccess()
+    {
+        byte[] embedded = CreateGltf(includeDataUri: true, out byte[] binary);
+        Dictionary<string, object?> root = JsonSerializer.Deserialize<Dictionary<string, object?>>(embedded)!;
+        root["buffers"] = new[] { new { byteLength = binary.Length, uri = "triangle.bin" } };
+        byte[] gltf = JsonSerializer.SerializeToUtf8Bytes(root);
+
+        ImportedScene imported = new GltfModelImporter().ImportWithSidecars(
+            gltf,
+            "triangle.gltf",
+            uri => uri == "triangle.bin" ? binary : null);
+
+        Assert.HasCount(1, imported.Primitives);
+        CollectionAssert.AreEqual(new ushort[] { 0, 1, 2 }, imported.Primitives[0].Indices);
+    }
+
+    [TestMethod]
     public void ObjTriangulatesAndAuthorsV5Aem()
     {
         const string obj = """

@@ -19,7 +19,25 @@
     <ProjectReference Include="..\Gof2Workshop.Export\Gof2Workshop.Export.csproj" />
     <ProjectReference Include="..\Gof2Workshop.Formats.Aei\Gof2Workshop.Formats.Aei.csproj" />
     <ProjectReference Include="..\Gof2Workshop.Formats.Aem\Gof2Workshop.Formats.Aem.csproj" />
+    <ProjectReference Include="..\Gof2Workshop.GameData\Gof2Workshop.GameData.csproj" />
+    <ProjectReference Include="..\Gof2Workshop.Import\Gof2Workshop.Import.csproj" />
     <ProjectReference Include="..\Gof2Workshop.Scene\Gof2Workshop.Scene.csproj" />
+    <ProjectReference Include="..\Gof2Workshop.Workbench\Gof2Workshop.Workbench.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\samples\SyntheticDemo\Assets\Models\synthetic_animated.aem"
+                      LogicalName="Gof2Workshop.Browser.Samples.synthetic_animated.aem" />
+    <EmbeddedResource Include="..\..\samples\SyntheticDemo\Assets\Textures\synthetic_spacecraft_diffuse.aei"
+                      LogicalName="Gof2Workshop.Browser.Samples.synthetic_animated.aei" />
+    <EmbeddedResource Include="..\..\samples\SyntheticDemo\Assets\Textures\synthetic_raw.aei"
+                      LogicalName="Gof2Workshop.Browser.Samples.synthetic_raw.aei" />
+    <EmbeddedResource Include="..\..\samples\SyntheticDemo\synthetic-atlas-preview.png"
+                      LogicalName="Gof2Workshop.Browser.Samples.synthetic-atlas-preview.png" />
+    <EmbeddedResource Include="..\..\samples\SyntheticDemo\Assets\Imported\synthetic_cube_import.gltf"
+                      LogicalName="Gof2Workshop.Browser.Samples.synthetic_cube_import.gltf" />
+    <EmbeddedResource Include="..\..\samples\SyntheticDemo\Assets\Imported\synthetic_cube_import.bin"
+                      LogicalName="Gof2Workshop.Browser.Samples.synthetic_cube_import.bin" />
   </ItemGroup>
 
 </Project>

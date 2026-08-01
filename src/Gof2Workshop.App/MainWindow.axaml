@@ -63,7 +63,7 @@
       </MenuItem>
       <MenuItem Header="_Asset">
         <MenuItem Header="_Open Asset" Command="{Binding OpenAssetCommand}" />
-        <MenuItem Header="_Import Custom Model…" Command="{Binding ImportModelCommand}" />
+        <MenuItem Header="_Create / Compose AEM…" Command="{Binding ImportModelCommand}" />
         <MenuItem Header="_Add to Mod" Command="{Binding AddToModCommand}" />
         <MenuItem Header="_Stage Replacement…" Command="{Binding ReplaceInModCommand}" />
         <Separator />
@@ -75,6 +75,8 @@
         <MenuItem Header="_Export Current Asset…" InputGesture="Ctrl+E" Command="{Binding ExportCurrentCommand}" />
       </MenuItem>
       <MenuItem Header="_Tools">
+        <MenuItem Header="_Blender Integration" Command="{Binding BlenderIntegrationCommand}" />
+        <Separator />
         <MenuItem Header="_Validate Mod" Command="{Binding ValidateModCommand}" />
         <MenuItem Header="_Build Mod" Command="{Binding BuildModCommand}" />
         <Separator />

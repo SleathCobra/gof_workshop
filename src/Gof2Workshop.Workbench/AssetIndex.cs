@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Text;
 using Gof2Workshop.Core;
 using Gof2Workshop.Formats.Aei;
+using Gof2Workshop.GameData;
 
 namespace Gof2Workshop.Workbench;
 
@@ -242,6 +243,7 @@ public sealed class AssetIndexService : IAssetIndex
             AssetKind.Aei => ProbeAei(header[..read], profile),
             AssetKind.Aem => ProbeAem(header[..read], profile),
             AssetKind.Language => ProbeLanguage(path, header[..read]),
+            AssetKind.GameData => ProbeGameData(path),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown asset kind."),
         };
         return new IndexedAsset(
@@ -373,7 +375,21 @@ public sealed class AssetIndexService : IAssetIndex
                 ? AssetKind.Aem
                 : extension.Equals(".lang", StringComparison.OrdinalIgnoreCase)
                     ? AssetKind.Language
-                    : null;
+                    : extension.Equals(".bin", StringComparison.OrdinalIgnoreCase)
+                        ? AssetKind.GameData
+                        : null;
+    }
+
+    private static ProbeResult ProbeGameData(string path)
+    {
+        GameDataFormatDescriptor descriptor = new GameDataFormatRegistry().Detect(path);
+        bool known = descriptor.Family != GameDataFamily.Unknown;
+        return new ProbeResult(
+            descriptor.DisplayName,
+            descriptor.Family.ToString(),
+            known ? AssetSupport.Supported : AssetSupport.RecognizedUnsupported,
+            true,
+            known ? null : "The BIN family is isolated; only loss-preserving raw inspection is available.");
     }
 
     private static ProbeResult ProbeLanguage(string path, ReadOnlySpan<byte> header)
