@@ -18,6 +18,9 @@ The desktop milestone adds two layers without changing the clean-room parser bou
 - operation-based AEI edit sessions, undo/redo, versioned atomic recovery, and source-hash conflicts;
 - versioned distributable manifests plus validated deterministic mod builds;
 - confidence-bearing AEM-to-AEI relationships and workspace material overrides.
+- a profile-qualified, scope-incremental dependency graph with evidence-bearing edges, bounded
+  expansion, user confirmations, and build-time reference validation;
+- a versioned read-only mission evidence projection plus private save-difference analysis;
 - bounded, workspace-free Inspection Collections for dropped files and folders;
 - explicit conversion of an Inspection Collection into user-owned workspace copies;
 - profile-isolated platform capabilities for GOF2 PC/Android/iOS/macOS and GOF3D iOS research;
@@ -36,7 +39,8 @@ It has no Avalonia dependency. Its services use records and interfaces that can 
 - contextual Inspector groups;
 - Output, Problems, and Asset Details tools;
 - persisted split-pane sizes, visibility, and detachable Explorer/Inspector/bottom tool windows;
-- AEI, AEM, and structured language-table editor providers.
+- AEI, AEM, all classified structured game-data, dependency-graph, Mission Explorer, and AEM
+  Authoring Studio document providers;
 - a Changes activity for validated replacements, warnings, conflicts, validation, and builds.
 
 An editor provider receives an indexed asset and returns an `IDocument`. The workbench does not switch over every future file/editor type. Mission graphs, scripts, blueprint graphs, UI designers, database editors, and documentation pages can register providers and add their own view data template.
@@ -76,15 +80,24 @@ independent service; neither renderer parses AEM or AEI containers.
 
 `Gof2Workshop.Browser` is a static Avalonia WebAssembly host over the same parsers and scene model.
 Browser-selected bytes live in a bounded Inspection Collection, small settings use origin-local
-storage, and exports require a browser-authorized save. The first browser viewport deliberately uses
-the bounded textured software renderer through CanvasKit; a dedicated realtime WebGL renderer is a
-separate backend, not a parser fork.
+storage, and exports require a browser-authorized save. A dedicated WebGL 2 renderer is the primary
+interactive viewport and the bounded textured software renderer remains its deterministic fallback;
+both consume the same normalized scene rather than forking a parser.
 
 `Gof2Workshop.Import` converts bounded glTF/GLB and OBJ/MTL inputs into a neutral imported scene,
-then through an explicitly selected PC AEM v4/v5 target. Serialization is accepted only after
-reparse, scene conversion, index/bounds checks, and statistic comparison. It does not expose raw AEM
-mutation to importers.
+then through an explicitly selected PC AEM v4/v5 target. A preflight model reports channels,
+materials, animation and representability. Triangle streams exceeding one AEM 16-bit envelope are
+split deterministically with local index remapping; every derived chunk retains the source-node
+animation. Serialization is accepted only after reparse, scene conversion, index/bounds checks, and
+statistic comparison. It does not expose raw AEM mutation to importers.
 
-`Gof2Workshop.GameData` owns the first confirmed structured format: big-endian, byte-length-prefixed
-UTF-8 language tables. Its operation log, hash-checked recovery, writer, and validation are UI-free;
-other database families remain read-only research candidates.
+`Gof2Workshop.GameData` owns the classified BIN registry, typed record models, loss-preserving
+writers, generated support matrix, operation log, hash-checked recovery, and validation. All 136
+GOF2 corpus BIN files map to 13 structural families and reconstruct byte-identically. Semantic
+labels and record creation stay disabled wherever runtime meaning, allocation, sorting, or capacity
+is not proven.
+
+`AemAuthoringProject` is an operation-based model independent from Avalonia. The Studio composes it
+with neutral AEM/glTF/GLB/OBJ import, PC v4/v5 writing, reparse/scene/preview validation, material
+mappings, transform-key editing, staged new assets, and the existing Blender bridge. The UI never
+adds fictional embedded AEM material fields.

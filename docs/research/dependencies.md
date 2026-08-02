@@ -79,8 +79,8 @@ picking, and context restoration; C# owns parsing, animation/material snapshots,
 validation. The deterministic software renderer remains the fallback. IndexedDB access similarly
 uses a focused, dependency-free ES module behind source-generated `JSImport` stubs.
 
-The trimmed Release publish uses compiled Avalonia bindings. The clean 2026-08-01 static publish
-contains 206 files and is 31.11 MiB uncompressed after adding the import, workbench, and structured-
+The trimmed Release publish uses compiled Avalonia bindings. The resumed 2026-08-01 static publish
+contains 206 files and is 31.12 MiB uncompressed after adding the import, workbench, and structured-
 data assemblies. Real Brave and Edge runs validated WebGL 2 camera rendering and forced context
 restoration; no WebGL binding package was required.
 

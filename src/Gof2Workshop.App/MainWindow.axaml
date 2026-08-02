@@ -32,6 +32,8 @@
     <Menu>
       <MenuItem Header="_File">
         <MenuItem Header="_New Workspace…" InputGesture="Ctrl+N" Command="{Binding NewWorkspaceCommand}" />
+        <MenuItem Header="New AEM (PC _v4)" Command="{Binding NewAemCommand}" CommandParameter="v4" />
+        <MenuItem Header="New AEM (PC v_5)" Command="{Binding NewAemCommand}" CommandParameter="v5" />
         <MenuItem Header="_Open Workspace…" InputGesture="Ctrl+O" Command="{Binding OpenWorkspaceCommand}" />
         <MenuItem Header="Open _Files for Quick Inspect…" InputGesture="Ctrl+Alt+O" Command="{Binding OpenFilesCommand}" />
         <MenuItem Header="Create Workspace from Quick Inspect Files…" Command="{Binding CreateWorkspaceFromInspectionCommand}" />
@@ -63,6 +65,8 @@
       </MenuItem>
       <MenuItem Header="_Asset">
         <MenuItem Header="_Open Asset" Command="{Binding OpenAssetCommand}" />
+        <MenuItem Header="Create Empty AEM v4" Command="{Binding NewAemCommand}" CommandParameter="v4" />
+        <MenuItem Header="Create Empty AEM v5" Command="{Binding NewAemCommand}" CommandParameter="v5" />
         <MenuItem Header="_Create / Compose AEM…" Command="{Binding ImportModelCommand}" />
         <MenuItem Header="_Add to Mod" Command="{Binding AddToModCommand}" />
         <MenuItem Header="_Stage Replacement…" Command="{Binding ReplaceInModCommand}" />
@@ -117,7 +121,7 @@
     <Grid x:Name="MainGrid" Grid.Row="2" ColumnDefinitions="42,300,5,*,5,300">
       <Border Background="#171C23" BorderThickness="0,0,1,0"
               BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
-        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto,Auto">
           <Button Classes="rail" ToolTip.Tip="Explorer"
                   Command="{Binding SetActivityCommand}" CommandParameter="Explorer" Content="▱" />
           <Button Grid.Row="1" Classes="rail" ToolTip.Tip="Search (Ctrl+P)"
@@ -126,9 +130,13 @@
                   Command="{Binding SetBottomTabCommand}" CommandParameter="Problems" Content="⚠" />
           <Button Grid.Row="3" Classes="rail" ToolTip.Tip="Changes"
                   Command="{Binding SetActivityCommand}" CommandParameter="Changes" Content="⇄" />
-          <Button Grid.Row="5" Classes="rail" ToolTip.Tip="Documentation / Research"
+          <Button Grid.Row="4" Classes="rail" ToolTip.Tip="Dependencies and references"
+                  Command="{Binding SetActivityCommand}" CommandParameter="Dependencies" Content="⌘" />
+          <Button Grid.Row="5" Classes="rail" ToolTip.Tip="Mission Explorer"
+                  Command="{Binding SetActivityCommand}" CommandParameter="Missions" Content="M" />
+          <Button Grid.Row="7" Classes="rail" ToolTip.Tip="Documentation / Research"
                   Command="{Binding SetActivityCommand}" CommandParameter="Documentation" Content="?" />
-          <Button Grid.Row="6" Classes="rail" ToolTip.Tip="Settings"
+          <Button Grid.Row="8" Classes="rail" ToolTip.Tip="Settings"
                   Command="{Binding SetActivityCommand}" CommandParameter="Settings" Content="⚙" />
         </Grid>
       </Border>

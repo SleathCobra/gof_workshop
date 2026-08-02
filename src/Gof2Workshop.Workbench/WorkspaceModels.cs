@@ -37,6 +37,13 @@ public sealed class WorkspaceDefinition
     public Dictionary<string, string> MaterialOverrides { get; set; } =
         new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Workspace-local confirmations and rejections keyed by stable dependency edge ID.
+    /// These are user decisions, not global format facts.
+    /// </summary>
+    public Dictionary<string, string> RelationshipDecisions { get; set; } =
+        new(StringComparer.Ordinal);
+
     [JsonIgnore]
     public string? FilePath { get; set; }
 }

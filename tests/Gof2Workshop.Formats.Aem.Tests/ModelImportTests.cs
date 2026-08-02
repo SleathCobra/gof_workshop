@@ -95,6 +95,43 @@ public sealed class ModelImportTests
             new GltfModelImporter().Import(Encoding.UTF8.GetBytes(json), "strip.gltf"));
     }
 
+    [TestMethod]
+    public void LargeGltfPrimitiveIsSplitWithoutDroppingTriangles()
+    {
+        byte[] gltf = CreateLargeIndexedGltf(65_538);
+
+        ImportedScene imported = new GltfModelImporter().Import(gltf, "large.gltf");
+        AemImportPreflightReport preflight = new AemImportPreflightService().Inspect(imported);
+
+        Assert.HasCount(2, imported.Primitives);
+        Assert.AreEqual(65_538, imported.Primitives.Sum(value => value.Indices.Length));
+        Assert.IsTrue(imported.Primitives.All(value => value.Positions.Length <= ushort.MaxValue));
+        Assert.IsTrue(imported.Primitives.All(value => value.Indices.Length <= ushort.MaxValue));
+        Assert.IsTrue(imported.Diagnostics.Any(value => value.Code == "AEM_IMPORT_SPLIT_16_BIT"));
+        Assert.IsTrue(preflight.IsRepresentable);
+    }
+
+    [TestMethod]
+    public void LargeObjIsSplitWithoutDroppingTriangles()
+    {
+        const int vertexCount = 65_538;
+        StringBuilder obj = new();
+        for (int index = 0; index < vertexCount; index++)
+        {
+            obj.Append("v ").Append(index % 257).Append(' ').Append(index / 257).AppendLine(" 0");
+        }
+        for (int index = 1; index <= vertexCount; index += 3)
+        {
+            obj.Append("f ").Append(index).Append(' ').Append(index + 1).Append(' ').Append(index + 2).AppendLine();
+        }
+
+        ImportedScene imported = new ObjModelImporter().Import(obj.ToString(), "large-obj");
+
+        Assert.HasCount(2, imported.Primitives);
+        Assert.AreEqual(vertexCount, imported.Primitives.Sum(value => value.Indices.Length));
+        Assert.IsTrue(imported.Diagnostics.Any(value => value.Code == "AEM_IMPORT_SPLIT_16_BIT"));
+    }
+
     private static byte[] CreateGltf(bool includeDataUri, out byte[] binary)
     {
         using MemoryStream stream = new();
@@ -162,6 +199,77 @@ public sealed class ModelImportTests
                 },
             },
             nodes = new[] { new { mesh = 0, name = "SyntheticNode" } },
+            scenes = new[] { new { nodes = new[] { 0 } } },
+            scene = 0,
+        };
+        return JsonSerializer.SerializeToUtf8Bytes(model);
+    }
+
+    private static byte[] CreateLargeIndexedGltf(int vertexCount)
+    {
+        using MemoryStream stream = new();
+        using (BinaryWriter writer = new(stream, Encoding.UTF8, leaveOpen: true))
+        {
+            for (int index = 0; index < vertexCount; index++)
+            {
+                writer.Write((float)(index % 257));
+                writer.Write((float)(index / 257));
+                writer.Write(0f);
+            }
+            for (uint index = 0; index < vertexCount; index++)
+            {
+                writer.Write(index);
+            }
+        }
+
+        byte[] binary = stream.ToArray();
+        int positionBytes = checked(vertexCount * 12);
+        var model = new
+        {
+            asset = new { version = "2.0", generator = "Gof2Workshop synthetic large import test" },
+            buffers = new[]
+            {
+                new
+                {
+                    byteLength = binary.Length,
+                    uri = "data:application/octet-stream;base64," + Convert.ToBase64String(binary),
+                },
+            },
+            bufferViews = new[]
+            {
+                new { buffer = 0, byteOffset = 0, byteLength = positionBytes },
+                new { buffer = 0, byteOffset = positionBytes, byteLength = vertexCount * 4 },
+            },
+            accessors = new object[]
+            {
+                new { bufferView = 0, componentType = 5126, count = vertexCount, type = "VEC3" },
+                new { bufferView = 1, componentType = 5125, count = vertexCount, type = "SCALAR" },
+            },
+            meshes = new[]
+            {
+                new
+                {
+                    name = "LargeSyntheticMesh",
+                    primitives = new[]
+                    {
+                        new
+                        {
+                            attributes = new Dictionary<string, int> { ["POSITION"] = 0 },
+                            indices = 1,
+                            mode = 4,
+                        },
+                    },
+                },
+            },
+            nodes = new[]
+            {
+                new
+                {
+                    mesh = 0,
+                    name = "LargeSyntheticNode",
+                    extras = new { stableSubmeshId = "large-synthetic" },
+                },
+            },
             scenes = new[] { new { nodes = new[] { 0 } } },
             scene = 0,
         };

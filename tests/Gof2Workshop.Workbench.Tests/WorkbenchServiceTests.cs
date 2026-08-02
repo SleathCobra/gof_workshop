@@ -1,6 +1,9 @@
 using System.Text;
+using System.Numerics;
 using Gof2Workshop.Core;
 using Gof2Workshop.Formats.Aei;
+using Gof2Workshop.Formats.Aem;
+using Gof2Workshop.Import;
 
 namespace Gof2Workshop.Workbench.Tests;
 
@@ -588,6 +591,61 @@ public sealed class WorkbenchServiceTests
         Assert.IsTrue(conflict.Issues.Any(issue =>
             issue.Severity == ModValidationSeverity.Error
             && issue.Message.Contains("source hash", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [TestMethod]
+    public async Task NewAuthoredAemStagesAsAddAndBuildsWithoutCopyingAnOriginal()
+    {
+        string gameRoot = Path.Combine(temporaryRoot, "game");
+        string modRoot = Path.Combine(temporaryRoot, "mod");
+        Directory.CreateDirectory(gameRoot);
+        WorkspaceService workspaceService = new();
+        WorkspaceDefinition workspace = await workspaceService.CreateAsync(
+            modRoot,
+            "Authored Add",
+            ProfileCatalog.Pc1X.Id);
+        workspace.GameAssetRoot = gameRoot;
+        workspace.ModId = "tests.authored-add";
+
+        AemAuthoringProject project = new("new_ship", AemVersion.V4);
+        project.AddPrimitive(new ImportedPrimitive(
+            "Hull",
+            [Vector3.Zero, Vector3.UnitX, Vector3.UnitY],
+            [Vector3.UnitZ, Vector3.UnitZ, Vector3.UnitZ],
+            [Vector2.Zero, Vector2.UnitX, Vector2.UnitY],
+            null,
+            [0, 1, 2],
+            null));
+        string authored = Path.Combine(temporaryRoot, "new_ship.aem");
+        await File.WriteAllBytesAsync(authored, project.Build().Bytes);
+
+        ModStagingService staging = new(workspaceService);
+        ModStagingResult result = await staging.StageNewAssetAsync(
+            workspace,
+            "assets/main/3d/meshes/new_ship.aem",
+            AssetKind.Aem,
+            authored);
+        Assert.AreEqual(ModAssetOperationKind.Add, result.Operation.Kind);
+        Assert.AreEqual(string.Empty, result.Operation.OriginalSha256);
+        Assert.IsFalse(PathPolicy.IsWithin(result.StagedPath, gameRoot));
+        await Assert.ThrowsAsync<InvalidDataException>(() => staging.StageNewAssetAsync(
+            workspace,
+            "assets/main/3d/meshes/not_an_aem.bin",
+            AssetKind.Aem,
+            authored));
+
+        workspace.GameAssetRoot = null;
+        ModBuildResult built = await new ModBuildService(workspaceService).BuildAsync(workspace);
+        Assert.HasCount(1, built.Report.Assets);
+        Assert.AreEqual("add", built.Report.Assets[0].Type);
+        Assert.IsTrue(File.Exists(Path.Combine(
+            built.OutputDirectory,
+            "Assets",
+            "assets",
+            "main",
+            "3d",
+            "meshes",
+            "new_ship.aem")));
     }
 
     [TestMethod]

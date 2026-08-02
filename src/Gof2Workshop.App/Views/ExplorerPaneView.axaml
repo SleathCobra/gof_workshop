@@ -162,6 +162,117 @@
         </ListBox>
       </Grid>
 
+      <Grid IsVisible="{Binding IsDependenciesActivity}" RowDefinitions="Auto,Auto,2*,Auto,3*">
+        <Grid Margin="8,6" ColumnDefinitions="*,Auto">
+          <TextBlock VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                     Text="DEPENDENCIES" />
+          <Button Grid.Column="1" Command="{Binding RefreshDependenciesCommand}" Content="Refresh" />
+        </Grid>
+        <TextBlock Grid.Row="1" Margin="8,0,8,6" FontSize="10" Opacity="0.7"
+                   Text="{Binding DependencySummary}" />
+        <ListBox Grid.Row="2" Margin="3" ItemsSource="{Binding DependencyNodes}"
+                 SelectedItem="{Binding SelectedDependencyNode}">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Grid Margin="5,3" ColumnDefinitions="Auto,*" ColumnSpacing="7">
+                <TextBlock Foreground="#74B9EE" Text="{Binding Kind}" />
+                <StackPanel Grid.Column="1">
+                  <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock FontSize="9" Opacity="0.55" Text="{Binding SourcePath}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <Grid Grid.Row="3" Margin="8,5" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="4">
+          <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="USES / REFERENCED BY" />
+          <Button Grid.Column="1" Command="{Binding OpenDependencyGraphCommand}" Content="Graph" />
+          <Button Grid.Column="2" Command="{Binding OpenDependencyCommand}" Content="Open" />
+          <Button Grid.Column="3" Command="{Binding ConfirmDependencyCommand}" Content="Confirm" />
+          <Button Grid.Column="4" Command="{Binding RejectDependencyCommand}" Content="Reject" />
+        </Grid>
+        <ListBox Grid.Row="4" Margin="3" ItemsSource="{Binding DependencyEdges}" SelectedItem="{Binding SelectedDependencyEdge}">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <StackPanel Margin="5,3">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                  <TextBlock Foreground="#9CD6FF" Text="{Binding Direction}" />
+                  <TextBlock Grid.Column="1" Text="{Binding Target}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="2" FontSize="9" Text="{Binding State}" />
+                </Grid>
+                <TextBlock FontSize="9" Opacity="0.65" Text="{Binding Relationship}" />
+                <TextBlock FontSize="9" Opacity="0.52" Text="{Binding Evidence}" TextWrapping="Wrap" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+
+      <Grid IsVisible="{Binding IsMissionsActivity}" RowDefinitions="Auto,Auto,Auto,3*,Auto,2*">
+        <Grid Margin="8,6" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="4">
+          <TextBlock VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Text="MISSION EXPLORER" />
+          <Button Grid.Column="1" Command="{Binding OpenMissionCommand}" Content="Open" />
+          <Button Grid.Column="2" Command="{Binding OpenMissionDependenciesCommand}" Content="References" />
+          <Button Grid.Column="3" Command="{Binding ExportMissionResearchCommand}" Content="Export…" />
+          <Button Grid.Column="4" Command="{Binding CompareMissionSavesCommand}" Content="Compare Saves…" />
+        </Grid>
+        <Border Grid.Row="1" Margin="6" Padding="7" Background="#332B19" CornerRadius="3">
+          <TextBlock Foreground="#FFD78A" FontSize="10" Text="{Binding MissionSummary}" TextWrapping="Wrap" />
+        </Border>
+        <Grid Grid.Row="2" Margin="5,1,5,4" ColumnDefinitions="2*,*,*,*" ColumnSpacing="4">
+          <TextBox PlaceholderText="Search mission evidence…" Text="{Binding MissionSearchText}" />
+          <ComboBox Grid.Column="1" ItemsSource="{Binding MissionKindFilters}" SelectedItem="{Binding MissionKindFilter}"
+                    ToolTip.Tip="Mission evidence kind" />
+          <ComboBox Grid.Column="2" ItemsSource="{Binding MissionConfidenceFilters}" SelectedItem="{Binding MissionConfidenceFilter}"
+                    ToolTip.Tip="Evidence confidence" />
+          <ComboBox Grid.Column="3" ItemsSource="{Binding MissionHandlerFilters}" SelectedItem="{Binding MissionHandlerFilter}"
+                    ToolTip.Tip="Native or LevelScript handler" />
+        </Grid>
+        <ListBox Grid.Row="3" Margin="3" ItemsSource="{Binding Missions}" SelectedItem="{Binding SelectedMission}">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <StackPanel Margin="5,3">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="1" FontSize="9" Foreground="#9CD6FF" Text="{Binding Confidence}" />
+                </Grid>
+                <TextBlock FontSize="9" Opacity="0.6" Text="{Binding Kind}" />
+                <TextBlock FontSize="9" Opacity="0.5" MaxLines="2" Text="{Binding Summary}" TextWrapping="Wrap" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <TextBlock Grid.Row="4" Classes="section" Text="LEVELSCRIPT / NATIVE HANDLERS" />
+        <TabControl Grid.Row="5" Margin="3">
+          <TabItem Header="Handlers">
+            <ListBox ItemsSource="{Binding MissionHandlers}">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Margin="5,3">
+                    <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
+                    <TextBlock FontSize="9" Opacity="0.6" Text="{Binding KnownEffects}" TextWrapping="Wrap" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </TabItem>
+          <TabItem Header="Private save diff">
+            <ListBox ItemsSource="{Binding MissionSaveDifferences}">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Grid Margin="4,2" ColumnDefinitions="90,50,*,*" ColumnSpacing="5">
+                    <TextBlock Text="{Binding Offset}" />
+                    <TextBlock Grid.Column="1" Text="{Binding Length}" />
+                    <TextBlock Grid.Column="2" FontSize="9" Text="{Binding Before}" />
+                    <TextBlock Grid.Column="3" FontSize="9" Text="{Binding After}" />
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </TabItem>
+        </TabControl>
+      </Grid>
+
       <StackPanel IsVisible="{Binding IsPlaceholderActivity}" Margin="18" Spacing="10">
         <TextBlock FontSize="19" FontWeight="SemiBold" Text="{Binding ActiveActivity}" />
         <TextBlock TextWrapping="Wrap" Opacity="0.72"

@@ -20,8 +20,8 @@ public sealed class ObjModelImporter
         List<Vector3> positions = [];
         List<Vector2> uvs = [];
         List<Vector3> normals = [];
-        List<ushort> indices = [];
-        Dictionary<VertexKey, ushort> vertices = [];
+        List<uint> indices = [];
+        Dictionary<VertexKey, uint> vertices = [];
         string? material = null;
 
         foreach (string untrimmed in text.Split('\n'))
@@ -43,7 +43,10 @@ public sealed class ObjModelImporter
                     sourceUvs.Add(new Vector2(Parse(parts[1]), Parse(parts[2])));
                     break;
                 case "vn" when parts.Length >= 4:
-                    sourceNormals.Add(Vector3.Normalize(new Vector3(Parse(parts[1]), Parse(parts[2]), Parse(parts[3]))));
+                    Vector3 normal = new(Parse(parts[1]), Parse(parts[2]), Parse(parts[3]));
+                    sourceNormals.Add(normal.LengthSquared() < 1e-12f
+                        ? throw new InvalidDataException("OBJ contains a zero-length normal.")
+                        : Vector3.Normalize(normal));
                     break;
                 case "usemtl" when parts.Length >= 2:
                     material ??= string.Join('_', parts.Skip(1));
@@ -70,26 +73,41 @@ public sealed class ObjModelImporter
 
         bool hasUvs = vertices.Keys.All(value => value.Uv >= 0);
         bool hasNormals = vertices.Keys.All(value => value.Normal >= 0);
+        IReadOnlyList<ImportedPrimitive> chunks = ImportedPrimitiveChunker.Split(
+            name,
+            positions.ToArray(),
+            hasNormals ? normals.ToArray() : null,
+            hasUvs ? uvs.ToArray() : null,
+            null,
+            indices.ToArray(),
+            material,
+            -1,
+            null,
+            null);
+        ModelImportDiagnostic[] diagnostics = chunks.Count > 1
+            ?
+            [
+                new ModelImportDiagnostic(
+                    ModelImportSeverity.Warning,
+                    "AEM_IMPORT_SPLIT_16_BIT",
+                    $"OBJ '{name}' was split into {chunks.Count:N0} submeshes to preserve all triangles within AEM 16-bit limits."),
+            ]
+            : [];
         return new ImportedScene(
             name,
-            [new ImportedPrimitive(name, positions.ToArray(), hasNormals ? normals.ToArray() : null, hasUvs ? uvs.ToArray() : null, null, indices.ToArray(), material)],
-            [],
+            chunks,
+            diagnostics,
             "OBJ coordinates retained; polygon faces triangulated as a fan");
 
         void Add(VertexKey key)
         {
-            if (!vertices.TryGetValue(key, out ushort index))
+            if (!vertices.TryGetValue(key, out uint index))
             {
-                index = checked((ushort)vertices.Count);
+                index = checked((uint)vertices.Count);
                 vertices.Add(key, index);
                 positions.Add(sourcePositions[key.Position]);
                 uvs.Add(key.Uv >= 0 ? sourceUvs[key.Uv] : Vector2.Zero);
                 normals.Add(key.Normal >= 0 ? sourceNormals[key.Normal] : Vector3.Zero);
-            }
-
-            if (indices.Count == ushort.MaxValue)
-            {
-                throw new InvalidDataException("OBJ primitive exceeds the AEM 16-bit index-count limit.");
             }
 
             indices.Add(index);

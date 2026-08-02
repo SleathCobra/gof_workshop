@@ -6,8 +6,10 @@ using Gof2Workshop.Core;
 using Gof2Workshop.Export;
 using Gof2Workshop.Formats.Aei;
 using Gof2Workshop.Formats.Aem;
+using Gof2Workshop.GameData;
 using Gof2Workshop.Import;
 using Gof2Workshop.Scene;
+using Gof2Workshop.Workbench;
 
 namespace Gof2Workshop.Testbed;
 
@@ -77,6 +79,8 @@ internal static class Program
             "view" => View(args, logger, cancellationToken),
             "validate-corpus" => ValidateCorpus(args, logger, cancellationToken),
             "compare-corpora" => CompareCorpora(args, logger, cancellationToken),
+            "bin-matrix" => BinMatrix(args, logger, cancellationToken),
+            "dependency-report" => DependencyReport(args, logger, cancellationToken),
             "model-import" => ImportModel(args, logger, cancellationToken),
             "generate-synthetic" => GenerateSynthetic(args, logger),
             _ => throw new ArgumentException($"Unknown command '{args.Command}'. Run 'help' for usage."),
@@ -415,6 +419,87 @@ internal static class Program
         return report.Corpora.All(corpus => corpus.Present) ? 0 : 3;
     }
 
+    private static int BinMatrix(
+        CliArguments args,
+        CliLogger logger,
+        CancellationToken cancellationToken)
+    {
+        if (args.Positionals.Count != 4)
+        {
+            throw new ArgumentException("bin-matrix requires roots in this order: PC Android iOS macOS.");
+        }
+
+        string[] profiles =
+        [
+            ProfileCatalog.Pc1X.Id,
+            ProfileCatalog.Android.Id,
+            ProfileCatalog.IOS.Id,
+            ProfileCatalog.MacOS.Id,
+        ];
+        GameDataSupportMatrixReport report = new GameDataSupportMatrixBuilder().Build(
+            profiles.Zip(args.Positionals, (profile, root) => new GameDataCorpusSource(profile, root)),
+            cancellationToken);
+        Console.WriteLine(JsonSerializer.Serialize(report, JsonOptions));
+        WriteJsonOption(args, "json", report, logger);
+        string? markdown = args.GetOption("markdown");
+        if (markdown is not null)
+        {
+            string? directory = Path.GetDirectoryName(markdown);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+            File.WriteAllText(markdown, report.ToMarkdown());
+            logger.Info("markdown.written", "Generated BIN support matrix written.", ("output", DisplayPath(markdown)));
+        }
+
+        return report.ParsedFiles == report.TotalFiles && report.ByteIdenticalRoundTrips == report.TotalFiles
+            ? 0
+            : 3;
+    }
+
+    private static int DependencyReport(
+        CliArguments args,
+        CliLogger logger,
+        CancellationToken cancellationToken)
+    {
+        string root = args.RequirePositional(0, "asset folder");
+        AssetPlatformProfile profile = ResolveProfile(args);
+        long memoryBefore = GC.GetTotalMemory(forceFullCollection: false);
+        System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+        AssetIndexResult index = new AssetIndexService().ScanAsync(
+            root,
+            AssetOwnership.Game,
+            profile,
+            cancellationToken: cancellationToken).GetAwaiter().GetResult();
+        TimeSpan indexTime = clock.Elapsed;
+        DependencyGraph graph = new();
+        DependencyGraphSnapshot snapshot = new DependencyGraphBuilder(graph).BuildAsync(
+            profile.Id,
+            index.Assets,
+            cancellationToken).GetAwaiter().GetResult();
+        clock.Stop();
+        IReadOnlyList<DependencyGraphIssue> issues = new DependencyReferenceValidator(graph).Validate();
+        long memoryAfter = GC.GetTotalMemory(forceFullCollection: false);
+        var report = new
+        {
+            Profile = profile.Id,
+            Assets = index.Assets.Count,
+            Nodes = snapshot.Nodes.Count,
+            Edges = snapshot.Edges.Count,
+            BrokenOrUnresolved = issues.Count,
+            IndexMilliseconds = Math.Round(indexTime.TotalMilliseconds, 2),
+            GraphMilliseconds = Math.Round((clock.Elapsed - indexTime).TotalMilliseconds, 2),
+            TotalMilliseconds = Math.Round(clock.Elapsed.TotalMilliseconds, 2),
+            ManagedMemoryDeltaBytes = memoryAfter - memoryBefore,
+            NodeKinds = snapshot.Nodes.GroupBy(node => node.Kind.ToString()).ToDictionary(group => group.Key, group => group.Count()),
+            EdgeKinds = snapshot.Edges.GroupBy(edge => edge.Kind.ToString()).ToDictionary(group => group.Key, group => group.Count()),
+        };
+        Console.WriteLine(JsonSerializer.Serialize(report, JsonOptions));
+        WriteJsonOption(args, "json", report, logger);
+        return 0;
+    }
+
     private static void WriteJsonOption(
         CliArguments args,
         string option,
@@ -462,6 +547,8 @@ internal static class Program
               view <file> [--output path]
               validate-corpus <folder> [--decode] [--roundtrip] [--limit N] [--profile profile-id] [--json path]
               compare-corpora <pc> <android> <ios> <macos> <gof3d-ios> [--json path]
+              bin-matrix <pc> <android> <ios> <macos> [--json path] [--markdown path]
+              dependency-report <folder> [--profile profile-id] [--json path]
               model-import <gltf|glb|obj> [--version 4|5] [--output work/custom.aem] [--preview path]
               generate-synthetic [--output samples/SyntheticDemo]
 

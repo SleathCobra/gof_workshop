@@ -1,0 +1,127 @@
+<UserControl
+    x:Class="Gof2Workshop.App.Views.MissionDocumentView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:documents="using:Gof2Workshop.App.Documents"
+    x:DataType="documents:MissionDocumentViewModel">
+  <Grid RowDefinitions="Auto,*">
+    <Border Padding="10,8" Background="#182A3B" BorderThickness="0,0,0,1"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <StackPanel Spacing="4">
+        <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding Title}" />
+        <TextBlock TextWrapping="Wrap" Text="{Binding Summary}" />
+        <TextBlock FontSize="10" Foreground="#FFD17A" Text="{Binding SafetyNotice}" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+    <ScrollViewer Grid.Row="1">
+      <Grid Margin="10" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="10">
+        <Border Padding="9" Background="#17212B" CornerRadius="4">
+          <StackPanel Spacing="5">
+            <TextBlock FontWeight="SemiBold" Text="STATES / EVIDENCED FLOW" />
+            <ItemsControl ItemsSource="{Binding States}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Margin="0,2" Padding="6" Background="#202C38" CornerRadius="3">
+                    <StackPanel>
+                      <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
+                      <TextBlock FontSize="10" Opacity="0.7" Text="{Binding Evidence}" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <ItemsControl ItemsSource="{Binding Transitions}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Margin="6,2" FontSize="10" Foreground="#9CD6FF"
+                             Text="{Binding Trigger}" TextWrapping="Wrap" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+        <Border Grid.Column="1" Padding="9" Background="#17212B" CornerRadius="4">
+          <StackPanel Spacing="5">
+            <TextBlock FontWeight="SemiBold" Text="REFERENCES / DEPENDENCIES" />
+            <ItemsControl ItemsSource="{Binding References}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid Margin="0,3" ColumnDefinitions="120,*,Auto" ColumnSpacing="6">
+                    <TextBlock Foreground="#9CD6FF" Text="{Binding Kind}" />
+                    <TextBlock Grid.Column="1" Text="{Binding Value}" />
+                    <TextBlock Grid.Column="2" FontSize="9" Text="{Binding Confidence}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Margin="0,7,0,0" FontWeight="SemiBold" Text="GRAPH RELATIONSHIPS" />
+            <ItemsControl ItemsSource="{Binding RelatedEdges}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Margin="0,3">
+                    <Grid ColumnDefinitions="120,*,Auto" ColumnSpacing="6">
+                      <TextBlock Foreground="#9CD6FF" Text="{Binding Kind}" />
+                      <TextBlock Grid.Column="1" FontSize="10" Text="{Binding OriginatingField}" />
+                      <TextBlock Grid.Column="2" FontSize="9" Text="{Binding EvidenceLevel}" />
+                    </Grid>
+                    <TextBlock FontSize="9" Opacity="0.6" Text="{Binding Evidence}" TextWrapping="Wrap" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+        <Border Grid.Row="1" Padding="9" Background="#17212B" CornerRadius="4">
+          <StackPanel Spacing="5">
+            <TextBlock FontWeight="SemiBold" Text="NATIVE / LEVELSCRIPT HANDLERS" />
+            <ItemsControl ItemsSource="{Binding Handlers}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Margin="0,4">
+                    <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
+                    <TextBlock FontSize="10" Text="{Binding CallingContext}" TextWrapping="Wrap" />
+                    <TextBlock FontSize="10" Opacity="0.6" Text="{Binding UnknownBehavior}" TextWrapping="Wrap" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+        <Border Grid.Row="1" Grid.Column="1" Padding="9" Background="#2C2117" CornerRadius="4">
+          <StackPanel Spacing="5">
+            <TextBlock FontWeight="SemiBold" Foreground="#FFD17A" Text="OPEN QUESTIONS / CREATION GATE" />
+            <ItemsControl ItemsSource="{Binding Unknowns}">
+              <ItemsControl.ItemTemplate><DataTemplate><TextBlock Margin="0,2" Text="{Binding}" TextWrapping="Wrap" /></DataTemplate></ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <ItemsControl ItemsSource="{Binding CreationBlockers}">
+              <ItemsControl.ItemTemplate><DataTemplate><TextBlock Margin="0,2" FontSize="10" Text="{Binding}" TextWrapping="Wrap" /></DataTemplate></ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+        <Border Grid.Row="2" Grid.ColumnSpan="2" Padding="9" Background="#17212B" CornerRadius="4">
+          <StackPanel>
+            <TextBlock FontWeight="SemiBold" Text="RUNTIME OBJECTIVE CATALOG" />
+            <ItemsControl ItemsSource="{Binding ObjectiveTypes}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid Margin="0,2" ColumnDefinitions="45,180,*,Auto" ColumnSpacing="7">
+                    <TextBlock Foreground="#9CD6FF" Text="{Binding Type}" />
+                    <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding DisplayName}" />
+                    <TextBlock Grid.Column="2" FontSize="10" Text="{Binding ObservedCondition}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Column="3" FontSize="9" Text="{Binding Confidence}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+        <Border Grid.Row="3" Grid.ColumnSpan="2" Padding="9" Background="#17212B" CornerRadius="4">
+          <StackPanel>
+            <TextBlock FontWeight="SemiBold" Text="EVIDENCE SOURCE" />
+            <TextBlock FontSize="10" Text="{Binding EvidenceSource}" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+      </Grid>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

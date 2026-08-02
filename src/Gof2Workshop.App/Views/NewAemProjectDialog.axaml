@@ -1,0 +1,78 @@
+<Window
+    x:Class="Gof2Workshop.App.Views.NewAemProjectDialog"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="New AEM Authoring Project"
+    Width="570" Height="620" MinWidth="500" MinHeight="520"
+    WindowStartupLocation="CenterOwner" CanResize="True">
+  <Grid RowDefinitions="*,Auto">
+    <ScrollViewer>
+      <StackPanel Margin="20" Spacing="9">
+        <TextBlock FontSize="22" FontWeight="SemiBold" Text="Create AEM" />
+        <TextBlock Opacity="0.7" TextWrapping="Wrap"
+                   Text="Create a mod-owned AEM project. The Workshop never writes to the original game folder." />
+
+        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="Asset name" />
+        <TextBox x:Name="NameBox" PlaceholderText="my_custom_model" />
+        <TextBlock FontWeight="SemiBold" Text="Mod-relative game target" />
+        <TextBox x:Name="TargetBox" PlaceholderText="assets/main/3d/meshes/my_custom_model.aem" />
+
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+          <StackPanel Spacing="5">
+            <TextBlock FontWeight="SemiBold" Text="Target profile" />
+            <ComboBox x:Name="ProfileBox" SelectedIndex="0">
+              <ComboBoxItem Content="GOF2 PC 1.x" Tag="gof2-pc-1x" />
+            </ComboBox>
+          </StackPanel>
+          <StackPanel Grid.Column="1" Spacing="5">
+            <TextBlock FontWeight="SemiBold" Text="AEM version" />
+            <ComboBox x:Name="VersionBox">
+              <ComboBoxItem Content="AEM v4 (PC)" Tag="4" />
+              <ComboBoxItem Content="AEM v5 (PC)" Tag="5" />
+            </ComboBox>
+          </StackPanel>
+        </Grid>
+
+        <TextBlock FontWeight="SemiBold" Text="Starting template" />
+        <ComboBox x:Name="TemplateBox">
+          <ComboBoxItem Content="Empty" Tag="Empty" />
+          <ComboBoxItem Content="Static prop" Tag="StaticProp" />
+          <ComboBoxItem Content="Single-mesh ship" Tag="SingleMeshShip" />
+          <ComboBoxItem Content="Multi-submesh ship" Tag="MultiSubmeshShip" />
+          <ComboBoxItem Content="Animated object" Tag="AnimatedObject" />
+          <ComboBoxItem Content="Billboard / plane" Tag="BillboardPlane" />
+          <ComboBoxItem Content="Station component" Tag="StationComponent" />
+        </ComboBox>
+
+        <TextBlock FontWeight="SemiBold" Text="Coordinate conversion" />
+        <ComboBox SelectedIndex="0" IsEnabled="False">
+          <ComboBoxItem Content="Workshop right-handed Y-up → GOF2 PC" />
+        </ComboBox>
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+          <StackPanel Spacing="5">
+            <TextBlock FontWeight="SemiBold" Text="Unit scale" />
+            <TextBox Text="1.0" IsReadOnly="True" ToolTip.Tip="Target conversion is fixed until alternate PC units are validated." />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Spacing="5">
+            <TextBlock FontWeight="SemiBold" Text="Initial pivot" />
+            <ComboBox SelectedIndex="0" IsEnabled="False">
+              <ComboBoxItem Content="Object origin" />
+            </ComboBox>
+          </StackPanel>
+        </Grid>
+        <Border Padding="9" Background="#202B36" CornerRadius="4">
+          <TextBlock TextWrapping="Wrap" FontSize="11"
+                     Text="Write support is intentionally limited to validated GOF2 PC AEM v4/v5. Materials remain preview/export mappings unless a separate game-effective relationship is confirmed." />
+        </Border>
+        <TextBlock x:Name="ErrorText" Foreground="#FF9292" TextWrapping="Wrap" />
+      </StackPanel>
+    </ScrollViewer>
+    <Border Grid.Row="1" Padding="12" BorderThickness="0,1,0,0"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+        <Button Click="OnCancel" Content="Cancel" />
+        <Button Click="OnCreate" Content="Create AEM" Classes="accent" />
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>

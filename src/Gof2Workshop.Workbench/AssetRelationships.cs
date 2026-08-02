@@ -73,6 +73,8 @@ public sealed record AssetRelationshipResolution(
 
 public interface IAssetRelationshipService
 {
+    public event EventHandler? Changed;
+
     public void UpdateAssets(IEnumerable<IndexedAsset> assets);
 
     public AssetRelationshipResolution ResolveMaterial(
@@ -108,6 +110,8 @@ public sealed partial class AssetRelationshipService : IAssetRelationshipService
     private readonly Dictionary<string, AssetDependency> materialDependencies =
         new(StringComparer.OrdinalIgnoreCase);
 
+    public event EventHandler? Changed;
+
     public void UpdateAssets(IEnumerable<IndexedAsset> assets)
     {
         ArgumentNullException.ThrowIfNull(assets);
@@ -119,6 +123,7 @@ public sealed partial class AssetRelationshipService : IAssetRelationshipService
         {
             textureAssets = snapshot;
         }
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public AssetRelationshipResolution ResolveMaterial(
@@ -302,6 +307,7 @@ public sealed partial class AssetRelationshipService : IAssetRelationshipService
 
         workspace.MaterialOverrides[CreateOverrideKey(aemAsset, primitiveIndex)] =
             ToWorkspacePath(aeiAsset, workspace);
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void ClearMaterialOverride(
@@ -312,6 +318,7 @@ public sealed partial class AssetRelationshipService : IAssetRelationshipService
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(aemAsset);
         workspace.MaterialOverrides.Remove(CreateOverrideKey(aemAsset, primitiveIndex));
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void DisableMaterial(
@@ -322,6 +329,7 @@ public sealed partial class AssetRelationshipService : IAssetRelationshipService
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(aemAsset);
         workspace.MaterialOverrides[CreateOverrideKey(aemAsset, primitiveIndex)] = "!none";
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public IReadOnlyList<AssetDependency> GetUses(IndexedAsset asset)

@@ -81,10 +81,12 @@ public sealed class ModBuildService : IModBuildService
     };
 
     private readonly WorkspaceService workspaceService;
+    private readonly IDependencyGraph? dependencyGraph;
 
-    public ModBuildService(WorkspaceService? workspaceService = null)
+    public ModBuildService(WorkspaceService? workspaceService = null, IDependencyGraph? dependencyGraph = null)
     {
         this.workspaceService = workspaceService ?? new WorkspaceService();
+        this.dependencyGraph = dependencyGraph;
     }
 
     public async Task<ModValidationResult> ValidateAsync(
@@ -98,7 +100,11 @@ public sealed class ModBuildService : IModBuildService
         string? gameRoot = string.IsNullOrWhiteSpace(workspace.GameAssetRoot)
             ? null
             : Path.GetFullPath(workspace.GameAssetRoot);
-        if (gameRoot is null || !Directory.Exists(gameRoot))
+        IReadOnlyList<ModAssetOperation> operations = await LoadOperationsAsync(
+            modRoot,
+            cancellationToken).ConfigureAwait(false);
+        bool requiresOriginals = operations.Any(operation => operation.Kind != ModAssetOperationKind.Add);
+        if (requiresOriginals && (gameRoot is null || !Directory.Exists(gameRoot)))
         {
             issues.Add(new(
                 ModValidationSeverity.Error,
@@ -106,10 +112,6 @@ public sealed class ModBuildService : IModBuildService
                 "The original game asset root is missing; source hashes cannot be verified."));
             return new ModValidationResult(assets, issues);
         }
-
-        IReadOnlyList<ModAssetOperation> operations = await LoadOperationsAsync(
-            modRoot,
-            cancellationToken).ConfigureAwait(false);
         foreach (ModAssetOperation operation in operations
                      .GroupBy(item => NormalizeRelative(item.GameRelativePath), StringComparer.OrdinalIgnoreCase)
                      .Select(group => group.OrderByDescending(item => item.CreatedAtUtc).First())
@@ -117,33 +119,31 @@ public sealed class ModBuildService : IModBuildService
         {
             cancellationToken.ThrowIfCancellationRequested();
             string target = NormalizeRelative(operation.GameRelativePath);
-            string sourcePath = SafeCombine(gameRoot, target);
             string modRelative = NormalizeRelative(operation.ModRelativePath);
             string stagedPath = SafeCombine(modRoot, modRelative);
-            if (!File.Exists(sourcePath))
-            {
-                issues.Add(new(ModValidationSeverity.Error, target, "Original source asset is missing."));
-                continue;
-            }
-
             if (!File.Exists(stagedPath))
             {
                 issues.Add(new(ModValidationSeverity.Error, target, "Staged mod file is missing."));
                 continue;
             }
 
-            string currentSourceHash = await HashFileAsync(sourcePath, cancellationToken)
-                .ConfigureAwait(false);
-            if (!string.Equals(
-                    currentSourceHash,
-                    operation.OriginalSha256,
-                    StringComparison.OrdinalIgnoreCase))
+            string currentSourceHash = string.Empty;
+            if (operation.Kind != ModAssetOperationKind.Add)
             {
-                issues.Add(new(
-                    ModValidationSeverity.Error,
-                    target,
-                    "Original source hash changed after staging. Restage or resolve the conflict."));
-                continue;
+                string sourcePath = SafeCombine(gameRoot!, target);
+                if (!File.Exists(sourcePath))
+                {
+                    issues.Add(new(ModValidationSeverity.Error, target, "Original source asset is missing."));
+                    continue;
+                }
+
+                currentSourceHash = await HashFileAsync(sourcePath, cancellationToken).ConfigureAwait(false);
+                if (!string.Equals(currentSourceHash, operation.OriginalSha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    issues.Add(new(ModValidationSeverity.Error, target,
+                        "Original source hash changed after staging. Restage or resolve the conflict."));
+                    continue;
+                }
             }
 
             string currentStagedHash = await HashFileAsync(stagedPath, cancellationToken)
@@ -160,7 +160,8 @@ public sealed class ModBuildService : IModBuildService
                 continue;
             }
 
-            if (string.Equals(currentSourceHash, currentStagedHash, StringComparison.OrdinalIgnoreCase))
+            if (operation.Kind != ModAssetOperationKind.Add &&
+                string.Equals(currentSourceHash, currentStagedHash, StringComparison.OrdinalIgnoreCase))
             {
                 issues.Add(new(
                     ModValidationSeverity.Warning,
@@ -173,7 +174,7 @@ public sealed class ModBuildService : IModBuildService
                 target,
                 currentSourceHash,
                 modRelative,
-                "replace",
+                operation.Kind == ModAssetOperationKind.Add ? "add" : "replace",
                 currentStagedHash));
         }
 
@@ -182,7 +183,48 @@ public sealed class ModBuildService : IModBuildService
             issues.Add(new(ModValidationSeverity.Warning, null, "No staged asset operations exist."));
         }
 
+        AppendDependencyIssues(operations, issues);
+
         return new ModValidationResult(assets, issues);
+    }
+
+    private void AppendDependencyIssues(
+        IReadOnlyList<ModAssetOperation> operations,
+        List<ModValidationIssue> issues)
+    {
+        if (dependencyGraph is null || operations.Count == 0)
+        {
+            return;
+        }
+
+        HashSet<string> changed = operations
+            .Select(operation => NormalizeRelative(operation.GameRelativePath))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        DependencyGraphSnapshot snapshot = dependencyGraph.Snapshot();
+        Dictionary<DependencyNodeId, DependencyNode> nodes = snapshot.Nodes.ToDictionary(node => node.Id);
+        foreach (DependencyEdge edge in snapshot.Edges.Where(edge =>
+                     edge.ValidationState is DependencyValidationState.Broken or DependencyValidationState.Unresolved))
+        {
+            if (!nodes.TryGetValue(edge.Source, out DependencyNode? source) ||
+                string.IsNullOrWhiteSpace(source.SourcePath))
+            {
+                continue;
+            }
+
+            string normalizedSource = source.SourcePath.Replace('\\', '/').TrimStart('/');
+            string? target = changed.FirstOrDefault(path =>
+                normalizedSource.Equals(path, StringComparison.OrdinalIgnoreCase) ||
+                normalizedSource.EndsWith('/' + path, StringComparison.OrdinalIgnoreCase));
+            if (target is null)
+            {
+                continue;
+            }
+
+            issues.Add(new ModValidationIssue(
+                ModValidationSeverity.Warning,
+                target,
+                $"Dependency {edge.Kind}: {edge.Evidence} Evidence: {edge.EvidenceLevel}."));
+        }
     }
 
     public async Task<ModBuildResult> BuildAsync(

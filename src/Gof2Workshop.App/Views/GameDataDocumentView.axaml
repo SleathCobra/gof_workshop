@@ -11,6 +11,9 @@
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="5">
           <Button Command="{Binding UndoCommand}" Content="Undo" />
           <Button Command="{Binding RedoCommand}" Content="Redo" />
+          <Button Command="{Binding ImportOperationsCommand}" Content="Import Operations…" />
+          <Button Command="{Binding ExportOperationsCommand}" Content="Export Operations…" />
+          <Button Command="{Binding StageCommand}" Content="Stage" />
           <Button Command="{Binding ExportCommand}" Content="Export validated BIN…" />
         </StackPanel>
         <StackPanel>

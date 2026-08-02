@@ -1,0 +1,69 @@
+<UserControl
+    x:Class="Gof2Workshop.App.Views.DependencyGraphDocumentView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:documents="using:Gof2Workshop.App.Documents"
+    x:DataType="documents:DependencyGraphDocumentViewModel">
+  <Grid RowDefinitions="Auto,*">
+    <Border Padding="7,5" BorderThickness="0,0,0,1"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <WrapPanel Orientation="Horizontal">
+        <Button Command="{Binding CollapseCommand}" Content="Collapse" />
+        <Button Margin="5,0,0,0" Command="{Binding ExpandCommand}" Content="Expand one level" />
+        <Button Margin="5,0,0,0" Command="{Binding OpenCommand}" Content="Open selected" />
+        <Button Margin="5,0,0,0" Command="{Binding TraceCommand}" Content="Trace selected" />
+        <Button Margin="5,0,0,0" Command="{Binding ClearTraceCommand}" Content="Clear trace" />
+        <Button Margin="5,0,0,0" Command="{Binding ExportCommand}" Content="Export report…" />
+        <ComboBox Width="155" Margin="9,0,0,0" ItemsSource="{Binding RelationshipFilters}"
+                  SelectedItem="{Binding RelationshipFilter}" ToolTip.Tip="Relationship type filter" />
+        <ComboBox Width="190" Margin="5,0,0,0" ItemsSource="{Binding EvidenceFilters}"
+                  SelectedItem="{Binding EvidenceFilter}" ToolTip.Tip="Evidence/confidence filter" />
+        <ComboBox Width="145" Margin="5,0,0,0" ItemsSource="{Binding PlatformFilters}"
+                  SelectedItem="{Binding PlatformFilter}" ToolTip.Tip="Profile filter" />
+        <Slider Width="140" Margin="8,0,0,0" Minimum="0.5" Maximum="2" Value="{Binding Zoom}" ToolTip.Tip="Graph zoom" />
+        <StackPanel Margin="9,0,0,0">
+          <TextBlock VerticalAlignment="Center" Text="{Binding Summary}" />
+          <TextBlock FontSize="9" Foreground="#62D394" Text="{Binding TraceSummary}" />
+        </StackPanel>
+        <TextBlock Margin="9,0,0,0" VerticalAlignment="Center" Foreground="#D6A75C" Text="LAZY / BOUNDED" />
+      </WrapPanel>
+    </Border>
+    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+      <Grid Width="{Binding CanvasWidth}" Height="{Binding CanvasHeight}" Background="#0E1218">
+        <ItemsControl ItemsSource="{Binding Edges}" IsHitTestVisible="False">
+          <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="documents:DependencyGraphEdgeVisual">
+              <Line StartPoint="{Binding Start}" EndPoint="{Binding End}" Stroke="{Binding Stroke}"
+                    StrokeThickness="1.4" ToolTip.Tip="{Binding ToolTip}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <ListBox ItemsSource="{Binding Nodes}" SelectedItem="{Binding SelectedNode}"
+                 Background="Transparent" BorderThickness="0">
+          <ListBox.ItemsPanel><ItemsPanelTemplate><Canvas /></ItemsPanelTemplate></ListBox.ItemsPanel>
+          <ListBox.Styles>
+            <Style Selector="ListBoxItem">
+              <Setter Property="Canvas.Left" Value="{Binding X}" />
+              <Setter Property="Canvas.Top" Value="{Binding Y}" />
+              <Setter Property="Padding" Value="0" />
+            </Style>
+          </ListBox.Styles>
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="documents:DependencyGraphNodeVisual">
+              <Border Width="220" MinHeight="58" Padding="8,6" BorderThickness="2"
+                      BorderBrush="{Binding Border}" Background="#E51A212B" CornerRadius="4"
+                      ToolTip.Tip="{Binding Node.Detail}">
+                <StackPanel>
+                  <TextBlock FontWeight="SemiBold" Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock FontSize="9" Foreground="#9CD6FF" Text="{Binding Node.Kind}" />
+                  <TextBlock FontSize="9" Opacity="0.58" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

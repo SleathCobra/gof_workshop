@@ -1,0 +1,217 @@
+<UserControl
+    x:Class="Gof2Workshop.App.Views.AemAuthoringDocumentView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:documents="using:Gof2Workshop.App.Documents"
+    xmlns:views="using:Gof2Workshop.App.Views"
+    x:DataType="documents:AemAuthoringDocumentViewModel">
+  <Grid RowDefinitions="Auto,*,5,210">
+    <Border Padding="7,5" BorderThickness="0,0,0,1"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <views:CompactHorizontalScroller ScrollStep="140">
+        <StackPanel Orientation="Horizontal" Spacing="5">
+          <Button Command="{Binding ImportCommand}" Content="Import Submeshes…" />
+          <Button Command="{Binding UndoCommand}" Content="Undo" />
+          <Button Command="{Binding RedoCommand}" Content="Redo" />
+          <Button Command="{Binding ValidateCommand}" Content="Validate" />
+          <Button Command="{Binding SaveCommand}" Content="Save Mod Copy…" />
+          <Button Command="{Binding StageCommand}" Content="Stage" />
+          <Button Command="{Binding ExportGltfCommand}" Content="Export glTF…" />
+          <Button Command="{Binding ExportObjCommand}" Content="Export OBJ…" />
+          <Button Command="{Binding OpenBlenderCommand}" Content="Open Blender" />
+          <TextBlock Margin="10,0" VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding ProjectSummary}" />
+          <TextBlock VerticalAlignment="Center" Foreground="#89D6A0" Text="MOD-OWNED AUTHORING" />
+        </StackPanel>
+      </views:CompactHorizontalScroller>
+    </Border>
+    <Grid Grid.Row="1" ColumnDefinitions="260,5,*,5,300">
+      <Grid RowDefinitions="Auto,*,Auto">
+        <TextBlock Classes="section" Text="SCENE HIERARCHY" />
+        <ListBox x:Name="SceneHierarchy" Grid.Row="1" Margin="4" ItemsSource="{Binding Submeshes}"
+                 SelectedItem="{Binding SelectedSubmesh}" SelectionMode="Multiple"
+                 SelectionChanged="OnSceneSelectionChanged"
+                 PointerPressed="OnScenePointerPressed" PointerReleased="OnScenePointerReleased">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="documents:AemAuthoringSubmeshRow">
+              <StackPanel Margin="5,3">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="4">
+                  <TextBlock FontWeight="SemiBold" Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="1" FontSize="9" Text="{Binding Hidden}" />
+                  <TextBlock Grid.Column="2" FontSize="9" Text="{Binding Locked}" />
+                </Grid>
+                <TextBlock FontSize="9" Opacity="0.58" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <StackPanel Grid.Row="2" Margin="5">
+          <TextBlock Margin="3,0" FontSize="9" Opacity="0.58" Text="{Binding SelectionSummary}" />
+          <TextBlock Margin="3,0" FontSize="9" Opacity="0.5" Text="Ctrl/Shift multi-select · drag a row onto another to reorder" />
+          <WrapPanel>
+          <Button Margin="2" Command="{Binding DuplicateCommand}" Content="Duplicate" />
+          <Button Margin="2" Command="{Binding DeleteCommand}" Content="Delete" />
+          <Button Margin="2" Command="{Binding MoveUpCommand}" Content="Move ↑" />
+          <Button Margin="2" Command="{Binding MoveDownCommand}" Content="Move ↓" />
+          <Button Margin="2" Command="{Binding ToggleHiddenCommand}" Content="Hide/Show" />
+          <Button Margin="2" Command="{Binding ToggleLockedCommand}" Content="Lock/Unlock" />
+          </WrapPanel>
+        </StackPanel>
+      </Grid>
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="#343B46" />
+      <Grid Grid.Column="2" Background="#0E1218">
+        <views:OpenGlAemViewportControl Document="{Binding PreviewDocument}" />
+        <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="9" Padding="7,4"
+                Background="#D0141A22" CornerRadius="3">
+          <StackPanel>
+            <TextBlock Text="{Binding Status}" />
+            <TextBlock FontSize="9" Opacity="0.65" Text="Left drag orbit · right drag pan · wheel zoom · hardware renderer with fallback" />
+          </StackPanel>
+        </Border>
+        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.55"
+                   IsVisible="{Binding HasNoPreview}" Text="Import a submesh to start the realtime preview" />
+      </Grid>
+      <GridSplitter Grid.Column="3" ResizeDirection="Columns" Background="#343B46" />
+      <TabControl Grid.Column="4">
+        <TabItem Header="Submesh">
+          <ScrollViewer>
+            <StackPanel Margin="8" Spacing="7">
+              <TextBlock FontWeight="SemiBold" Text="NAME" />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="5">
+                <TextBox Text="{Binding EditName}" />
+                <Button Grid.Column="1" Command="{Binding RenameCommand}" Content="Rename" />
+              </Grid>
+              <TextBlock FontWeight="SemiBold" Text="PIVOT" />
+              <Grid ColumnDefinitions="*,*,*" ColumnSpacing="4">
+                <TextBox PlaceholderText="X" Text="{Binding PivotX}" />
+                <TextBox Grid.Column="1" PlaceholderText="Y" Text="{Binding PivotY}" />
+                <TextBox Grid.Column="2" PlaceholderText="Z" Text="{Binding PivotZ}" />
+              </Grid>
+              <WrapPanel>
+                <Button Margin="2" Command="{Binding ApplyPivotCommand}" Content="Apply Pivot" />
+                <Button Margin="2" Command="{Binding CenterPivotCommand}" Content="Center Pivot" />
+                <Button Margin="2" Command="{Binding RecalculateBoundsCommand}" Content="Recalculate Bounds" />
+              </WrapPanel>
+              <TextBlock FontWeight="SemiBold" Text="GEOMETRY TOOLS" />
+              <WrapPanel>
+                <Button Margin="2" Command="{Binding NormalizeNormalsCommand}" Content="Normals" />
+                <Button Margin="2" Command="{Binding ReverseWindingCommand}" Content="Reverse Winding" />
+                <Button Margin="2" Command="{Binding RemoveDegeneratesCommand}" Content="Remove Degenerates" />
+                <Button Margin="2" Command="{Binding WeldVerticesCommand}" Content="Weld Duplicates" />
+              </WrapPanel>
+              <TextBlock FontWeight="SemiBold" Text="APPLY GEOMETRY TRANSFORM" />
+              <TextBlock FontSize="9" Opacity="0.58" Text="Translation / rotation radians / scale; explicit and undoable." />
+              <Grid ColumnDefinitions="*,*,*" ColumnSpacing="4">
+                <TextBox PlaceholderText="Move X" Text="{Binding TranslateX}" />
+                <TextBox Grid.Column="1" PlaceholderText="Move Y" Text="{Binding TranslateY}" />
+                <TextBox Grid.Column="2" PlaceholderText="Move Z" Text="{Binding TranslateZ}" />
+              </Grid>
+              <Grid ColumnDefinitions="*,*,*" ColumnSpacing="4">
+                <TextBox PlaceholderText="Rotate X" Text="{Binding RotateX}" />
+                <TextBox Grid.Column="1" PlaceholderText="Rotate Y" Text="{Binding RotateY}" />
+                <TextBox Grid.Column="2" PlaceholderText="Rotate Z" Text="{Binding RotateZ}" />
+              </Grid>
+              <Grid ColumnDefinitions="*,*,*" ColumnSpacing="4">
+                <TextBox PlaceholderText="Scale X" Text="{Binding ScaleX}" />
+                <TextBox Grid.Column="1" PlaceholderText="Scale Y" Text="{Binding ScaleY}" />
+                <TextBox Grid.Column="2" PlaceholderText="Scale Z" Text="{Binding ScaleZ}" />
+              </Grid>
+              <Button Command="{Binding ApplyTransformCommand}" Content="Apply Transform" />
+              <TextBlock FontWeight="SemiBold" Text="MATERIAL / TEXTURE" />
+              <TextBlock FontSize="10" Opacity="0.65" Text="Preview/export assignment; game-effective mapping is not implied." TextWrapping="Wrap" />
+              <Button Command="{Binding AssignTextureCommand}" Content="Assign Game or Mod AEI…" />
+              <TextBlock FontWeight="SemiBold" Text="STAGED TARGET" />
+              <TextBox Text="{Binding OutputRelativePath}" ToolTip.Tip="Game-relative target for the new mod-owned AEM; originals are never overwritten." />
+              <TextBlock FontWeight="SemiBold" Text="NEXT IMPORT OPTIONS" />
+              <TextBlock FontSize="9" Opacity="0.58" Text="Known source conventions are converted to Workshop Y-up. Extra changes below are explicit operations." TextWrapping="Wrap" />
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                <TextBlock VerticalAlignment="Center" Text="Unit scale" />
+                <TextBox Grid.Column="1" Text="{Binding ImportScale}" />
+              </Grid>
+              <WrapPanel>
+                <CheckBox Margin="2" IsChecked="{Binding ImportGenerateNormals}" Content="Generate/normalize normals" />
+                <CheckBox Margin="2" IsChecked="{Binding ImportRemoveDegenerates}" Content="Remove degenerates" />
+                <CheckBox Margin="2" IsChecked="{Binding ImportWeldVertices}" Content="Weld duplicates" />
+                <CheckBox Margin="2" IsChecked="{Binding ImportCenterPivots}" Content="Center pivots" />
+                <CheckBox Margin="2" IsChecked="{Binding ImportReverseWinding}" Content="Reverse winding" />
+                <CheckBox Margin="2" IsChecked="{Binding ImportFlipV}" Content="Flip V" />
+                <CheckBox Margin="2" IsChecked="{Binding ImportAnimations}" Content="Import animations" />
+                <CheckBox Margin="2" IsChecked="{Binding ImportMaterials}" Content="Import materials" />
+              </WrapPanel>
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+        <TabItem Header="Validation">
+          <ListBox Margin="4" ItemsSource="{Binding Validation}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="documents:AemAuthoringValidationRow">
+                <StackPanel Margin="5,3">
+                  <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                    <TextBlock Foreground="#9CD6FF" Text="{Binding Severity}" />
+                    <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding Area}" />
+                  </Grid>
+                  <TextBlock FontSize="10" Text="{Binding Message}" TextWrapping="Wrap" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </TabItem>
+        <TabItem Header="Import">
+          <Grid RowDefinitions="Auto,*">
+            <TextBlock Margin="8,6" FontSize="10" Opacity="0.7" Text="{Binding ImportPreflightSummary}" TextWrapping="Wrap" />
+            <ListBox Grid.Row="1" Margin="4" ItemsSource="{Binding ImportPreflight}">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="documents:AemImportPreflightRow">
+                  <StackPanel Margin="5,3">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                      <TextBlock FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Grid.Column="1" Foreground="#9CD6FF" Text="{Binding Status}" />
+                    </Grid>
+                    <TextBlock FontSize="9" Opacity="0.58" Text="{Binding Source}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock FontSize="10" Text="{Binding Detail}" TextWrapping="Wrap" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Grid>
+        </TabItem>
+      </TabControl>
+    </Grid>
+    <GridSplitter Grid.Row="2" ResizeDirection="Rows" Background="#343B46" />
+    <Grid Grid.Row="3" ColumnDefinitions="250,5,235,5,*">
+      <Grid RowDefinitions="Auto,*">
+        <TextBlock Classes="section" Text="ANIMATION TRACKS" />
+        <ListBox Grid.Row="1" Margin="4" ItemsSource="{Binding Tracks}" SelectedItem="{Binding SelectedTrack}">
+          <ListBox.ItemTemplate><DataTemplate><TextBlock Margin="4" Text="{Binding Label}" /></DataTemplate></ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="#343B46" />
+      <Grid Grid.Column="2" RowDefinitions="Auto,*">
+        <TextBlock Classes="section" Text="SELECTED TRACK KEYS" />
+        <ListBox Grid.Row="1" Margin="4" ItemsSource="{Binding Keys}" SelectedItem="{Binding SelectedKey}">
+          <ListBox.ItemTemplate><DataTemplate><TextBlock Margin="4" Text="{Binding Label}" /></DataTemplate></ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+      <GridSplitter Grid.Column="3" ResizeDirection="Columns" Background="#343B46" />
+      <StackPanel Grid.Column="4" Margin="9" Spacing="7">
+        <TextBlock FontWeight="SemiBold" Text="ADD CONFIRMED TRANSFORM KEY" />
+        <Grid ColumnDefinitions="190,105,105,Auto,Auto,Auto,Auto" ColumnSpacing="6">
+          <ComboBox ItemsSource="{Binding Channels}" SelectedItem="{Binding SelectedChannel}" />
+          <TextBox Grid.Column="1" PlaceholderText="Time (seconds)" Text="{Binding KeyTime}" />
+          <TextBox Grid.Column="2" PlaceholderText="Value" Text="{Binding KeyValue}" />
+          <Button Grid.Column="3" Command="{Binding AddKeyCommand}" Content="Add" />
+          <Button Grid.Column="4" Command="{Binding UpdateKeyCommand}" Content="Update" />
+          <Button Grid.Column="5" Command="{Binding DuplicateKeyCommand}" Content="Duplicate" />
+          <Button Grid.Column="6" Command="{Binding DeleteKeyCommand}" Content="Delete" />
+        </Grid>
+        <Grid ColumnDefinitions="Auto,105,Auto,Auto,*" ColumnSpacing="6">
+          <Button Command="{Binding ImportAnimationCommand}" Content="Import from AEM…" />
+          <TextBox Grid.Column="1" PlaceholderText="Source mesh #" Text="{Binding AnimationSourceSubmeshIndex}" />
+          <CheckBox Grid.Column="2" VerticalAlignment="Center" IsChecked="{Binding MergeImportedAnimation}" Content="Merge keys" />
+          <Button Grid.Column="3" Command="{Binding DeleteTrackCommand}" Content="Clear Track" />
+          <TextBlock Grid.Column="4" VerticalAlignment="Center" FontSize="9" Opacity="0.58" Text="Manual source-to-target mapping; confirmed transform channels only." />
+        </Grid>
+        <TextBlock FontSize="10" Opacity="0.65" Text="Translation, rotation and scale scalar channels are writable. UV/special channels remain preservation-only." />
+      </StackPanel>
+    </Grid>
+  </Grid>
+</UserControl>

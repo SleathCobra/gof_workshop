@@ -38,8 +38,10 @@ public enum GameDataSupportLevel
 public enum GameDataScalarKind
 {
     Int32BigEndian,
+    Int32LittleEndian,
     Int16BigEndian,
     Int16LittleEndian,
+    Float32LittleEndian,
     UnsignedByte,
     ModifiedUtf8,
     RawBytes,
@@ -98,23 +100,23 @@ public sealed class GameDataFormatRegistry
         return file switch
         {
             "items.bin" => Structural(GameDataFamily.ItemsAndBlueprints, "Items and blueprint arrays", "big-endian"),
-            "ships.bin" => Structural(GameDataFamily.Ships, "Ship parameter table", "big-endian"),
+            "ships.bin" => Semantic(GameDataFamily.Ships, "Ship parameter table", "big-endian"),
             "systems.bin" => Structural(GameDataFamily.SystemsAndConnections, "Systems and connection table", "big-endian / Java modified UTF-8"),
             "stations.bin" => Semantic(GameDataFamily.Stations, "Station table", "big-endian / Java modified UTF-8"),
             "agents.bin" => Structural(GameDataFamily.Agents, "Agent table", "big-endian / Java modified UTF-8"),
-            "wanted.bin" => Structural(GameDataFamily.WantedTargets, "Wanted-target table", "big-endian / Java modified UTF-8"),
-            "ticker.bin" => Structural(GameDataFamily.NewsTicker, "News/ticker table", "big-endian"),
+            "wanted.bin" => Semantic(GameDataFamily.WantedTargets, "Wanted-target table", "big-endian / Java modified UTF-8"),
+            "ticker.bin" => Semantic(GameDataFamily.NewsTicker, "News/ticker table", "big-endian"),
             "shipparts.bin" => Structural(GameDataFamily.ShipParts, "Ship attachment transforms", "mixed: byte records and big-endian values"),
             "stationparts.bin" => Structural(GameDataFamily.StationParts, "Station attachment transforms", "mixed: byte records and big-endian values"),
             "collision.bin" or "collision_test.bin" or "wreck_collisions.bin" or "static_collisions.bin" or "v_collisions.bin" =>
-                Advanced(GameDataFamily.CollisionGeometry, "Collision records", "little-endian record envelope"),
-            "docks.bin" or "docks_hd.bin" => Advanced(GameDataFamily.DockingPoints, "Docking-point records", "platform-specific little-endian records"),
+                Structural(GameDataFamily.CollisionGeometry, "Collision spheres and axis-aligned boxes", "little-endian"),
+            "docks.bin" or "docks_hd.bin" => Structural(GameDataFamily.DockingPoints, "Docking-point transforms", "little-endian"),
             "weapons.bin" or "weapons_hd.bin" or "weapons_sd.bin" =>
-                Advanced(GameDataFamily.WeaponsAndEquipment, "Weapon parameter table", "platform-specific structured table"),
+                Structural(GameDataFamily.WeaponPositions, "Weapon attachment positions", "little-endian"),
             _ when file.EndsWith("_weapons.bin", StringComparison.Ordinal) =>
-                Structural(GameDataFamily.WeaponPositions, "Weapon attachment positions", "mixed: little-endian envelope and big-endian payload"),
+                Structural(GameDataFamily.WeaponPositions, "Weapon attachment positions", "little-endian"),
             _ when file.Contains("docking_points", StringComparison.Ordinal) =>
-                Advanced(GameDataFamily.DockingPoints, "Docking-point records", "platform-specific little-endian records"),
+                Structural(GameDataFamily.DockingPoints, "Docking-point transforms", "little-endian"),
             _ => new GameDataFormatDescriptor(
                 GameDataFamily.Unknown,
                 GameDataSupportLevel.UnknownAndIsolated,
@@ -135,16 +137,18 @@ public sealed class GameDataFormatRegistry
                 GameDataFamily.Names => ParseNames(name, descriptor, source),
                 GameDataFamily.ItemsAndBlueprints => ParseItems(name, descriptor, source),
                 GameDataFamily.Ships => ParseFixedIntRecords(name, descriptor, source, 9,
-                    ["Parameter0", "Parameter1", "Parameter2", "Parameter3", "Parameter4", "Parameter5", "Parameter6", "Parameter7", "Speed"]),
+                    ["ShipId", "BaseHitpoints", "BaseLoad", "BaseValue", "SlotType0", "SlotType1", "SlotType2", "SlotType3", "Handling"]),
                 GameDataFamily.SystemsAndConnections => ParseSystems(name, descriptor, source),
                 GameDataFamily.Stations => ParseStationRecords(name, descriptor, source),
                 GameDataFamily.Agents => ParseAgents(name, descriptor, source),
                 GameDataFamily.WantedTargets => ParseWanted(name, descriptor, source),
                 GameDataFamily.NewsTicker => ParseFixedIntRecords(name, descriptor, source, 7,
-                    ["Active", "Flag0", "Flag1", "Flag2", "Flag3", "Unknown0", "Unknown1"]),
+                    ["Active", "ConditionFlag0", "ConditionFlag1", "ConditionFlag2", "ConditionFlag3", "MinimumLevel", "MaximumLevel"]),
                 GameDataFamily.ShipParts => ParseParts(name, descriptor, source, station: false),
                 GameDataFamily.StationParts => ParseParts(name, descriptor, source, station: true),
                 GameDataFamily.WeaponPositions => ParsePositionGroups(name, descriptor, source),
+                GameDataFamily.CollisionGeometry => ParseCollisionGroups(name, descriptor, source),
+                GameDataFamily.DockingPoints => ParseSpacePointGroups(name, descriptor, source),
                 _ => ParseOpaque(name, descriptor, source),
             };
         }
@@ -200,7 +204,7 @@ public sealed class GameDataFormatRegistry
             for (int field = 0; field < integersPerRecord; field++)
             {
                 fields.Add(cursor.ReadInt32Field(index, labels[field], editable: true,
-                    field == integersPerRecord - 1 && descriptor.Family == GameDataFamily.Ships ? "strong hypothesis" : "structural"));
+                    descriptor.SupportLevel == GameDataSupportLevel.SemanticReadWrite ? "confirmed" : "structural"));
             }
 
             records.Add(new GameDataRecord(index, start, stride, fields));
@@ -337,13 +341,16 @@ public sealed class GameDataFormatRegistry
     {
         Cursor cursor = new(name, source);
         List<GameDataRecord> records = [];
-        string[] labels = ["Id", "ParameterA", "ParameterB", "FlagC", "ParameterD", "ParameterE", "ParameterF", "ParameterG", "ParameterH", "ParameterI", "ParameterJ", "ParameterK", "ParameterL"];
+        string[] labels =
+        [
+            "Id", "BoardId", "RaceId", "MaleFlag", "ShipId", "WeaponId", "Hitpoints", "LootItemId",
+            "LootAmount", "Reward", "RequiredBounties", "RequiredMissionId", "WingmanCount",
+        ];
         for (int index = 0; cursor.Remaining > 0; index++)
         {
             int start = cursor.Offset;
             List<GameDataField> fields = [cursor.ReadStringField(index, "Name", true, "confirmed")];
-            fields.AddRange(labels.Select(label => cursor.ReadInt32Field(index, label, true,
-                label is "Id" or "FlagC" ? "confirmed" : "unresolved semantics")));
+            fields.AddRange(labels.Select(label => cursor.ReadInt32Field(index, label, true, "confirmed")));
             int imageCount = cursor.ReadInt32("image part count");
             if (imageCount is < 0 or > 5)
             {
@@ -430,8 +437,12 @@ public sealed class GameDataFormatRegistry
                 fields.Add(cursor.ReadInt16LittleField(index, $"Point[{point}].Z", true, "confirmed"));
                 if (short.Parse(type.Value, CultureInfo.InvariantCulture) == 3)
                 {
-                    fields.Add(cursor.ReadRawField(index, $"Point[{point}].DirectionFloat3", 12, true,
-                        "confirmed float payload; axis semantics provisional"));
+                    fields.Add(cursor.ReadFloat32LittleField(index, $"Point[{point}].DirectionX", true,
+                        "confirmed direction vector; engine display-axis conversion is profile-specific"));
+                    fields.Add(cursor.ReadFloat32LittleField(index, $"Point[{point}].DirectionY", true,
+                        "confirmed direction vector; engine display-axis conversion is profile-specific"));
+                    fields.Add(cursor.ReadFloat32LittleField(index, $"Point[{point}].DirectionZ", true,
+                        "confirmed direction vector; engine display-axis conversion is profile-specific"));
                 }
             }
 
@@ -439,6 +450,104 @@ public sealed class GameDataFormatRegistry
         }
 
         return Document(name, descriptor, source, records);
+    }
+
+    private static GameDataDocument ParseCollisionGroups(
+        string name,
+        GameDataFormatDescriptor descriptor,
+        byte[] source)
+    {
+        Cursor cursor = new(name, source);
+        List<GameDataRecord> records = [];
+        for (int index = 0; cursor.Remaining > 0; index++)
+        {
+            int start = cursor.Offset;
+            List<GameDataField> fields = [cursor.ReadInt32LittleField(index, "OwnerId", true, "confirmed")];
+            GameDataField storedCount = cursor.ReadInt32LittleField(index, "PayloadWordCountMinusOne", false, "confirmed");
+            fields.Add(storedCount);
+            int wordCount = checked(int.Parse(storedCount.Value, CultureInfo.InvariantCulture) + 1);
+            cursor.ValidateCount(wordCount, "collision payload words", 4);
+            int payloadEnd = checked(cursor.Offset + wordCount * 4);
+            GameDataField shapeCountField = cursor.ReadInt32LittleField(index, "ShapeCount", false, "confirmed");
+            fields.Add(shapeCountField);
+            int shapeCount = int.Parse(shapeCountField.Value, CultureInfo.InvariantCulture);
+            if (shapeCount < 0 || shapeCount > wordCount)
+            {
+                throw Failure(name, shapeCountField.Offset, "shape count", $"Shape count {shapeCount} cannot fit in {wordCount} payload words.");
+            }
+
+            for (int shape = 0; shape < shapeCount; shape++)
+            {
+                GameDataField type = cursor.ReadInt32LittleField(index, $"Shape[{shape}].Type", false, "confirmed: 0 sphere, 1 axis-aligned box");
+                fields.Add(type);
+                int typeValue = int.Parse(type.Value, CultureInfo.InvariantCulture);
+                if (typeValue is not (0 or 1))
+                {
+                    throw Failure(name, type.Offset, "collision shape type", $"Recognized collision envelope contains unsupported shape type {typeValue}.");
+                }
+
+                fields.Add(cursor.ReadInt32LittleField(index, $"Shape[{shape}].CenterX", true, "confirmed storage; source coordinate convention"));
+                fields.Add(cursor.ReadInt32LittleField(index, $"Shape[{shape}].CenterY", true, "confirmed storage; source coordinate convention"));
+                fields.Add(cursor.ReadInt32LittleField(index, $"Shape[{shape}].CenterZ", true, "confirmed storage; source coordinate convention"));
+                if (typeValue == 0)
+                {
+                    fields.Add(cursor.ReadInt32LittleField(index, $"Shape[{shape}].Radius", true, "confirmed"));
+                }
+                else if (typeValue == 1)
+                {
+                    fields.Add(cursor.ReadInt32LittleField(index, $"Shape[{shape}].HalfExtentX", true, "confirmed"));
+                    fields.Add(cursor.ReadInt32LittleField(index, $"Shape[{shape}].HalfExtentY", true, "confirmed"));
+                    fields.Add(cursor.ReadInt32LittleField(index, $"Shape[{shape}].HalfExtentZ", true, "confirmed"));
+                }
+            }
+
+            if (cursor.Offset != payloadEnd)
+            {
+                throw Failure(name, cursor.Offset, "collision payload", $"Shapes ended at 0x{cursor.Offset:X}; envelope ends at 0x{payloadEnd:X}.");
+            }
+
+            records.Add(new GameDataRecord(index, start, cursor.Offset - start, fields));
+        }
+
+        return Document(name, descriptor, source, records,
+            ["Collision centers remain in source coordinates; axis conversion and scale depend on the runtime consumer."]);
+    }
+
+    private static GameDataDocument ParseSpacePointGroups(
+        string name,
+        GameDataFormatDescriptor descriptor,
+        byte[] source)
+    {
+        Cursor cursor = new(name, source);
+        List<GameDataRecord> records = [];
+        for (int index = 0; cursor.Remaining > 0; index++)
+        {
+            int start = cursor.Offset;
+            List<GameDataField> fields = [cursor.ReadInt16LittleField(index, "OwnerId", true, "confirmed")];
+            GameDataField countField = cursor.ReadInt16LittleField(index, "PointCount", false, "confirmed");
+            fields.Add(countField);
+            int count = ushort.Parse(countField.Value, CultureInfo.InvariantCulture);
+            cursor.ValidateCount(count, "space point count", 38);
+            for (int point = 0; point < count; point++)
+            {
+                fields.Add(cursor.ReadInt16LittleField(index, $"Point[{point}].Type", true, "confirmed"));
+                foreach (string component in new[] { "PositionX", "PositionY", "PositionZ", "RotationX", "RotationY", "RotationZ" })
+                {
+                    fields.Add(cursor.ReadFloat32LittleField(index, $"Point[{point}].{component}", true, "confirmed"));
+                }
+
+                foreach (string component in new[] { "Auxiliary0", "Auxiliary1", "Auxiliary2" })
+                {
+                    fields.Add(cursor.ReadFloat32LittleField(index, $"Point[{point}].{component}", true,
+                        "confirmed fixed float field; gameplay meaning unresolved"));
+                }
+            }
+
+            records.Add(new GameDataRecord(index, start, cursor.Offset - start, fields));
+        }
+
+        return Document(name, descriptor, source, records,
+            ["The runtime consumes position and Euler rotation; the final float3 is preserved as editable fixed-size research data."]);
     }
 
     private static GameDataDocument ParseOpaque(string name, GameDataFormatDescriptor descriptor, byte[] source)
@@ -498,6 +607,16 @@ public sealed class GameDataFormatRegistry
                 value.ToString(CultureInfo.InvariantCulture), editable, confidence);
         }
 
+        public GameDataField ReadInt32LittleField(int record, string field, bool editable, string confidence)
+        {
+            int start = Offset;
+            Require(4, field);
+            int value = BinaryPrimitives.ReadInt32LittleEndian(source.AsSpan(Offset, 4));
+            Offset += 4;
+            return Create(record, field, start, 4, GameDataScalarKind.Int32LittleEndian,
+                value.ToString(CultureInfo.InvariantCulture), editable, confidence);
+        }
+
         public GameDataField ReadInt16Field(int record, string field, bool editable, string confidence)
         {
             int start = Offset;
@@ -516,6 +635,16 @@ public sealed class GameDataFormatRegistry
             Offset += 2;
             return Create(record, field, start, 2, GameDataScalarKind.Int16LittleEndian,
                 value.ToString(CultureInfo.InvariantCulture), editable, confidence);
+        }
+
+        public GameDataField ReadFloat32LittleField(int record, string field, bool editable, string confidence)
+        {
+            int start = Offset;
+            Require(4, field);
+            float value = BinaryPrimitives.ReadSingleLittleEndian(source.AsSpan(Offset, 4));
+            Offset += 4;
+            return Create(record, field, start, 4, GameDataScalarKind.Float32LittleEndian,
+                value.ToString("R", CultureInfo.InvariantCulture), editable, confidence);
         }
 
         public GameDataField ReadByteField(int record, string field, bool editable, string confidence)
@@ -687,6 +816,10 @@ public sealed class GameDataEditSession
         new GameDataRecoveryDocument(1, sourceHash, operations.Take(appliedCount).ToArray()),
         GameDataJsonContext.Default.GameDataRecoveryDocument);
 
+    public static GameDataRecoveryDocument DeserializeRecovery(string json) =>
+        JsonSerializer.Deserialize(json, GameDataJsonContext.Default.GameDataRecoveryDocument)
+        ?? throw new InvalidDataException("The structured-data recovery document is empty.");
+
     public void Replay(GameDataRecoveryDocument recovery, string sourceHash)
     {
         ArgumentNullException.ThrowIfNull(recovery);
@@ -744,11 +877,23 @@ public sealed class GameDataEditSession
             case GameDataScalarKind.Int32BigEndian:
                 BinaryPrimitives.WriteInt32BigEndian(bytes, int.Parse(value, CultureInfo.InvariantCulture));
                 break;
+            case GameDataScalarKind.Int32LittleEndian:
+                BinaryPrimitives.WriteInt32LittleEndian(bytes, int.Parse(value, CultureInfo.InvariantCulture));
+                break;
             case GameDataScalarKind.Int16BigEndian:
                 BinaryPrimitives.WriteInt16BigEndian(bytes, short.Parse(value, CultureInfo.InvariantCulture));
                 break;
             case GameDataScalarKind.Int16LittleEndian:
                 BinaryPrimitives.WriteInt16LittleEndian(bytes, short.Parse(value, CultureInfo.InvariantCulture));
+                break;
+            case GameDataScalarKind.Float32LittleEndian:
+                float parsed = float.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture);
+                if (!float.IsFinite(parsed))
+                {
+                    throw new FormatException("A finite floating-point value is required.");
+                }
+
+                BinaryPrimitives.WriteSingleLittleEndian(bytes, parsed);
                 break;
             case GameDataScalarKind.UnsignedByte:
                 bytes[0] = byte.Parse(value, CultureInfo.InvariantCulture);

@@ -8,3 +8,9 @@
 - Runtime-hook approaches are outside this milestone and platform-specific.
 
 Therefore mission creation, writing and graph editing remain disabled. The smallest useful next experiment is a read-only, versioned save-record parser validated against user-created before/after saves, followed by correlation of mission object fields and campaign status. This must not begin with a writer.
+
+The implemented Mission Explorer and bounded dependency/state views do not relax this gate. The
+first plausibly editable mission-adjacent subset is existing `wanted.bin` record fields, which have
+writer/reparse validation but still lack an in-game mutation test. Campaign creation additionally
+requires proven identity allocation, trigger registration, objective and reward execution,
+dialogue invocation, persistence, native-handler behavior, and capacity limits.

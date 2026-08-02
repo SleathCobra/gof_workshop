@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Gof2Workshop.App.Presentation;
+using Gof2Workshop.Core;
 using Gof2Workshop.GameData;
 using Gof2Workshop.Workbench;
 
@@ -31,6 +33,8 @@ public sealed class GameDataDocumentViewModel :
     private readonly IUserDialogService dialogs;
     private readonly IOutputService output;
     private readonly IProblemService problems;
+    private readonly WorkspaceService workspaceService = new();
+    private readonly string sourceHash;
     private GameDataFieldRow? selectedField;
     private string editValue = string.Empty;
     private string searchText = string.Empty;
@@ -56,10 +60,15 @@ public sealed class GameDataDocumentViewModel :
         this.output = output;
         this.problems = problems;
         session = new GameDataEditSession(document);
+        sourceHash = Convert.ToHexStringLower(SHA256.HashData(document.OriginalBytes));
         ApplyCommand = new RelayCommand(Apply, CanApply);
         UndoCommand = new RelayCommand(Undo, () => session.CanUndo);
         RedoCommand = new RelayCommand(Redo, () => session.CanRedo);
         ExportCommand = new AsyncRelayCommand(ExportDefaultAsync);
+        ExportOperationsCommand = new AsyncRelayCommand(ExportOperationsAsync);
+        ImportOperationsCommand = new AsyncRelayCommand(ImportOperationsAsync, () => !IsReadOnly);
+        StageCommand = new AsyncRelayCommand(StageAsync, CanStage);
+        TryRestoreRecovery();
         RefreshRows();
     }
 
@@ -110,6 +119,12 @@ public sealed class GameDataDocumentViewModel :
     public System.Windows.Input.ICommand RedoCommand { get; }
 
     public AsyncRelayCommand ExportCommand { get; }
+
+    public AsyncRelayCommand ExportOperationsCommand { get; }
+
+    public AsyncRelayCommand ImportOperationsCommand { get; }
+
+    public AsyncRelayCommand StageCommand { get; }
 
     public string Summary =>
         $"{document.Family} · {document.SupportLevel} · {document.Records.Count:N0} records · " +
@@ -224,6 +239,7 @@ public sealed class GameDataDocumentViewModel :
             _ = new GameDataFormatRegistry().Parse(asset.FileName, outputBytes);
             RefreshRows(fieldId);
             output.Write(OutputLevel.Information, "Structured data", $"Changed {SelectedField?.Field.Name}; writer reparse passed.");
+            SaveRecovery();
         }
         catch (Exception exception) when (exception is FormatException or InvalidDataException or InvalidOperationException or OverflowException)
         {
@@ -236,6 +252,7 @@ public sealed class GameDataDocumentViewModel :
         string? fieldId = SelectedField?.Field.Id;
         session.Undo();
         RefreshRows(fieldId);
+        SaveRecovery();
     }
 
     private void Redo()
@@ -243,6 +260,128 @@ public sealed class GameDataDocumentViewModel :
         string? fieldId = SelectedField?.Field.Id;
         session.Redo();
         RefreshRows(fieldId);
+        SaveRecovery();
+    }
+
+    private async Task ExportOperationsAsync()
+    {
+        string? destination = await dialogs.SaveFileAsync(
+            "Export structured-data operation log",
+            Path.GetFileNameWithoutExtension(asset.FileName) + ".gof2operations.json",
+            ".json",
+            Path.GetDirectoryName(asset.FullPath));
+        if (destination is null)
+        {
+            return;
+        }
+
+        await File.WriteAllTextAsync(destination, session.SerializeRecovery(sourceHash));
+        output.Write(OutputLevel.Information, "Structured data", $"Exported {session.AppliedOperations.Count:N0} operation(s).");
+    }
+
+    private async Task ImportOperationsAsync()
+    {
+        string? source = await dialogs.PickAssetFileAsync("Import structured-data operation log", ".json");
+        if (source is null)
+        {
+            return;
+        }
+
+        try
+        {
+            GameDataRecoveryDocument recovery = GameDataEditSession.DeserializeRecovery(await File.ReadAllTextAsync(source));
+            session.Replay(recovery, sourceHash);
+            _ = new GameDataFormatRegistry().Parse(asset.FileName, session.Write());
+            RefreshRows();
+            SaveRecovery();
+            output.Write(OutputLevel.Information, "Structured data", $"Imported and reparsed {recovery.Operations.Count:N0} operation(s).");
+        }
+        catch (Exception exception) when (exception is JsonException or IOException or InvalidDataException or InvalidOperationException or FormatException)
+        {
+            problems.Add(ProblemEntry.Error(asset, exception.Message, "Use an operation log exported from this unchanged source asset."));
+        }
+    }
+
+    private bool CanStage() => !IsReadOnly && session.AppliedOperations.Count > 0 && workspace.GameAssetRoot is not null;
+
+    private async Task StageAsync()
+    {
+        byte[] bytes = session.Write();
+        _ = new GameDataFormatRegistry().Parse(asset.FileName, bytes);
+        string modRoot = workspaceService.ResolveModPath(workspace, workspace.ModRoot);
+        string validatedRoot = Path.Combine(modRoot, ".work", "validated");
+        Directory.CreateDirectory(validatedRoot);
+        string candidate = Path.Combine(validatedRoot, $"{Guid.NewGuid():N}.bin");
+        await File.WriteAllBytesAsync(candidate, bytes);
+        try
+        {
+            ModStagingResult result = await new ModStagingService(workspaceService).StageGeneratedReplacementAsync(
+                workspace,
+                GameRelativePath(),
+                AssetKind.GameData,
+                candidate,
+                overwrite: true);
+            output.Write(OutputLevel.Information, "Changes",
+                $"Validated structured BIN staged at {Path.GetRelativePath(modRoot, result.StagedPath)}.");
+        }
+        finally
+        {
+            File.Delete(candidate);
+        }
+    }
+
+    private string GameRelativePath()
+    {
+        string normalized = asset.RelativePath.Replace('\\', '/').TrimStart('/');
+        const string prefix = "Assets/Data/";
+        return normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? normalized[prefix.Length..]
+            : normalized;
+    }
+
+    private string? RecoveryPath()
+    {
+        if (IsReadOnly || workspace.FilePath is null)
+        {
+            return null;
+        }
+
+        string root = workspaceService.ResolveModPath(workspace, workspace.ModRoot);
+        return Path.Combine(root, ".work", "recovery", "game-data", sourceHash + ".json");
+    }
+
+    private void SaveRecovery()
+    {
+        string? path = RecoveryPath();
+        if (path is null)
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        string temporary = path + ".tmp";
+        File.WriteAllText(temporary, session.SerializeRecovery(sourceHash));
+        File.Move(temporary, path, overwrite: true);
+    }
+
+    private void TryRestoreRecovery()
+    {
+        string? path = RecoveryPath();
+        if (path is null || !File.Exists(path))
+        {
+            return;
+        }
+
+        try
+        {
+            session.Replay(GameDataEditSession.DeserializeRecovery(File.ReadAllText(path)), sourceHash);
+            _ = new GameDataFormatRegistry().Parse(asset.FileName, session.Write());
+            output.Write(OutputLevel.Information, "Recovery", $"Restored structured edits for {asset.FileName}.");
+        }
+        catch (Exception exception) when (exception is JsonException or IOException or InvalidDataException or InvalidOperationException)
+        {
+            problems.Add(ProblemEntry.Warning(asset, "Structured edit recovery was not replayed: " + exception.Message));
+        }
     }
 
     private void RefreshRows(string? selectedId = null)
@@ -271,6 +410,7 @@ public sealed class GameDataDocumentViewModel :
             : Fields.FirstOrDefault(row => string.Equals(row.Field.Id, selectedId, StringComparison.Ordinal));
         ((RelayCommand)UndoCommand).RaiseCanExecuteChanged();
         ((RelayCommand)RedoCommand).RaiseCanExecuteChanged();
+        StageCommand.RaiseCanExecuteChanged();
         OnPropertyChanged(nameof(AssetDetails));
         RaiseInspectorChanged();
     }

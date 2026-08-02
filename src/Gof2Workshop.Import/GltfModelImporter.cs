@@ -108,10 +108,9 @@ public sealed class GltfModelImporter
                 Vector4[]? colors = attributes.TryGetProperty("COLOR_0", out JsonElement colorAccessor)
                     ? ReadVector4(accessors, bufferViews, buffers, colorAccessor.GetInt32())
                     : null;
-                ushort[] indices = primitive.TryGetProperty("indices", out JsonElement indexAccessor)
+                uint[] indices = primitive.TryGetProperty("indices", out JsonElement indexAccessor)
                     ? ReadIndices(accessors, bufferViews, buffers, indexAccessor.GetInt32())
-                    : Enumerable.Range(0, positions.Length).Select(value => checked((ushort)value)).ToArray();
-                ValidateChannels(positions, normals, uvs, colors, indices);
+                    : Enumerable.Range(0, positions.Length).Select(value => checked((uint)value)).ToArray();
 
                 for (int index = 0; index < positions.Length; index++)
                 {
@@ -126,8 +125,10 @@ public sealed class GltfModelImporter
                 }
 
                 string? materialName = ReadMaterialName(root, primitive);
-                primitives.Add(new ImportedPrimitive(
-                    $"{meshName}_{primitiveIndex:D2}",
+                string primitiveName = $"{meshName}_{primitiveIndex:D2}";
+                string? stableId = ReadStableId(root, nodeIndex);
+                IReadOnlyList<ImportedPrimitive> chunks = ImportedPrimitiveChunker.Split(
+                    primitiveName,
                     positions,
                     normals,
                     uvs,
@@ -136,7 +137,15 @@ public sealed class GltfModelImporter
                     materialName,
                     nodeIndex,
                     nodeName,
-                    ReadStableId(root, nodeIndex)));
+                    stableId);
+                primitives.AddRange(chunks);
+                if (chunks.Count > 1)
+                {
+                    diagnostics.Add(new ModelImportDiagnostic(
+                        ModelImportSeverity.Warning,
+                        "AEM_IMPORT_SPLIT_16_BIT",
+                        $"Primitive '{primitiveName}' was split into {chunks.Count:N0} submeshes to preserve all triangles within AEM 16-bit limits."));
+                }
                 primitiveIndex++;
             }
         }
@@ -654,7 +663,7 @@ public sealed class GltfModelImporter
         return result;
     }
 
-    private static ushort[] ReadIndices(JsonElement[] accessors, JsonElement[] views, byte[][] buffers, int index)
+    private static uint[] ReadIndices(JsonElement[] accessors, JsonElement[] views, byte[][] buffers, int index)
     {
         JsonElement accessor = Get(accessors, index, "accessor");
         if (accessor.GetProperty("type").GetString() != "SCALAR" || accessor.TryGetProperty("sparse", out _))
@@ -670,7 +679,7 @@ public sealed class GltfModelImporter
         }
 
         (byte[] buffer, int offset, int stride, int count) = AccessorRange(accessor, views, buffers, size);
-        ushort[] result = new ushort[count];
+        uint[] result = new uint[count];
         for (int element = 0; element < count; element++)
         {
             ReadOnlySpan<byte> source = buffer.AsSpan(offset + (element * stride));
@@ -680,7 +689,7 @@ public sealed class GltfModelImporter
                 5123 => BinaryPrimitives.ReadUInt16LittleEndian(source),
                 _ => BinaryPrimitives.ReadUInt32LittleEndian(source),
             };
-            result[element] = checked((ushort)value);
+            result[element] = value;
         }
 
         return result;
@@ -718,32 +727,6 @@ public sealed class GltfModelImporter
         (uint)index < (uint)values.Length
             ? values[index]
             : throw new InvalidDataException($"{name} index {index} is outside its array.");
-
-    private static void ValidateChannels(
-        Vector3[] positions,
-        Vector3[]? normals,
-        Vector2[]? uvs,
-        Vector4[]? colors,
-        ushort[] indices)
-    {
-        if (positions.Length == 0 || positions.Length > ushort.MaxValue)
-        {
-            throw new InvalidDataException($"Primitive vertex count {positions.Length} is outside 1..65535.");
-        }
-
-        if (indices.Length == 0 || indices.Length > ushort.MaxValue || indices.Length % 3 != 0)
-        {
-            throw new InvalidDataException("AEM requires 1..65535 triangle indices and a count divisible by three.");
-        }
-
-        if (indices.Any(index => index >= positions.Length) ||
-            (normals is not null && normals.Length != positions.Length) ||
-            (uvs is not null && uvs.Length != positions.Length) ||
-            (colors is not null && colors.Length != positions.Length))
-        {
-            throw new InvalidDataException("Primitive channel counts or indices do not match its positions.");
-        }
-    }
 
     private static string? ReadMaterialName(JsonElement root, JsonElement primitive)
     {

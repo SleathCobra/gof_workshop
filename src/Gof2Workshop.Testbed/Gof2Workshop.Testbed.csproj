@@ -9,6 +9,7 @@
     <ProjectReference Include="..\Gof2Workshop.Export\Gof2Workshop.Export.csproj" />
     <ProjectReference Include="..\Gof2Workshop.Import\Gof2Workshop.Import.csproj" />
     <ProjectReference Include="..\Gof2Workshop.GameData\Gof2Workshop.GameData.csproj" />
+    <ProjectReference Include="..\Gof2Workshop.Workbench\Gof2Workshop.Workbench.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

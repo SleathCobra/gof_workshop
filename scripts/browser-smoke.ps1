@@ -52,7 +52,13 @@ function Receive-CdpMessage {
     try {
         do {
             $segment = [ArraySegment[byte]]::new($buffer)
-            $result = $socket.ReceiveAsync($segment, $cancellation.Token).GetAwaiter().GetResult()
+            $receive = $socket.ReceiveAsync($segment, $cancellation.Token)
+            if (!$receive.Wait([TimeSpan]::FromSeconds(15))) {
+                $cancellation.Cancel()
+                $socket.Abort()
+                throw [TimeoutException]::new('Timed out waiting for a DevTools response.')
+            }
+            $result = $receive.GetAwaiter().GetResult()
             if ($result.MessageType -eq [Net.WebSockets.WebSocketMessageType]::Close) {
                 throw 'The browser closed the DevTools socket.'
             }
@@ -79,11 +85,16 @@ function Invoke-Cdp {
     $request = @{ id = $script:nextId; method = $Method; params = $Parameters } | ConvertTo-Json -Compress -Depth 100
     $bytes = [Text.Encoding]::UTF8.GetBytes($request)
     Write-Verbose "CDP -> $Method ($($script:nextId))"
-    $socket.SendAsync(
+    $send = $socket.SendAsync(
         [ArraySegment[byte]]::new($bytes),
         [Net.WebSockets.WebSocketMessageType]::Text,
         $true,
-        [Threading.CancellationToken]::None).GetAwaiter().GetResult() | Out-Null
+        [Threading.CancellationToken]::None)
+    if (!$send.Wait([TimeSpan]::FromSeconds(15))) {
+        $socket.Abort()
+        throw [TimeoutException]::new("Timed out sending DevTools command $Method.")
+    }
+    $send.GetAwaiter().GetResult() | Out-Null
 
     while ($true) {
         $message = Receive-CdpMessage
@@ -125,7 +136,7 @@ try {
     $targets = $null
     do {
         try {
-            $targets = Invoke-RestMethod "http://127.0.0.1:$DebugPort/json/list"
+            $targets = Invoke-RestMethod "http://127.0.0.1:$DebugPort/json/list" -TimeoutSec 2
         }
         catch {
             Start-Sleep -Milliseconds 200
@@ -141,7 +152,12 @@ try {
     }
 
     Write-Verbose "Connecting to $($target.webSocketDebuggerUrl)"
-    $socket.ConnectAsync([Uri]$target.webSocketDebuggerUrl, [Threading.CancellationToken]::None).GetAwaiter().GetResult() | Out-Null
+    $connect = $socket.ConnectAsync([Uri]$target.webSocketDebuggerUrl, [Threading.CancellationToken]::None)
+    if (!$connect.Wait([TimeSpan]::FromSeconds(15))) {
+        $socket.Abort()
+        throw [TimeoutException]::new('Timed out connecting to the browser DevTools socket.')
+    }
+    $connect.GetAwaiter().GetResult() | Out-Null
     Invoke-Cdp -Method 'Runtime.enable' | Out-Null
     Invoke-Cdp -Method 'Page.enable' | Out-Null
     Invoke-Cdp -Method 'Page.navigate' -Parameters @{ url = $Url } | Out-Null
@@ -237,6 +253,7 @@ try {
     } | ConvertTo-Json -Depth 20
 }
 finally {
+    $socket.Abort()
     $socket.Dispose()
     $ownedProcess = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
     if ($ownedProcess) {

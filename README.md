@@ -28,11 +28,16 @@ Validated locally against an ignored Galaxy on Fire 2 corpus:
 - Workspace-free Quick Inspect for multiple files/folders, drag-and-drop, command-line paths, temporary relationships, and explicit conversion into a user-owned workspace.
 - A static browser-local WebAssembly host with a dedicated realtime WebGL 2 viewport, software fallback, AEI editing, AEM authoring, structured BIN editing, IndexedDB recovery, and browser-authorized downloads. Real Brave and Edge smoke runs cover rendering, camera input, and WebGL context restoration.
 - glTF 2.0/GLB, OBJ/MTL, and existing-AEM import through a neutral authoring model, with multi-source composition, transform animation reimport/editing, validated PC AEM v4/v5 writing, reparse, scene conversion, and preview.
-- Safe structured editors for `.lang` and every discovered GOF2 `.bin` family. All 136 BIN files are classified and reproduce byte-for-byte unchanged; semantically unresolved families remain loss-preserving/raw rather than exposing guessed fields.
+- Safe structured editors for `.lang` and every discovered GOF2 `.bin` family. All 136 BIN files are classified, reproduce byte-for-byte unchanged, and pass a controlled size-stable edited/reparse check; positional/physical tables expose typed bounded fields while unresolved values remain explicitly raw.
+- A shared incremental dependency graph joins BIN records, language keys, AEM submeshes, AEI atlas regions, mission evidence, heuristic candidates, and user-confirmed material mappings. Broken references feed Problems and staged-build validation.
+- A read-only Mission Explorer presents native campaign/freelance state evidence, all 26 observed objective evaluator types, wanted-contract records, handler provenance, and private save-difference ranges without exposing unsafe mission writing.
+- A dedicated AEM Authoring Studio creates PC v4/v5 projects from seven CC0 templates, composes AEM/glTF/GLB/OBJ sources, edits geometry/pivots/bounds/materials/transform keys, imports AEM animation, previews through OpenGL, and stages only writer/reparse-valid output.
 - A Blender 5.1 helper add-on plus a real headless geometry/material/animation round trip using stable Workshop metadata.
 - A restartable in-application tutorial panel using the public CC0 synthetic corpus.
 
-See [the anonymized local corpus report](docs/compatibility/local-corpus-report.md) for exact results.
+See the [semantic data, dependency, mission, and authoring report](docs/compatibility/semantic-data-mission-authoring-report.md),
+the generated [BIN support matrix](docs/compatibility/bin-support-matrix.md), and the
+[anonymized local corpus report](docs/compatibility/local-corpus-report.md) for exact results.
 
 ## Requirements
 
@@ -126,6 +131,15 @@ dotnet run --project src/Gof2Workshop.Testbed -- validate-corpus data --decode -
 dotnet run --project src/Gof2Workshop.Testbed -- validate-corpus data --decode --json work/full-validation.json
 ```
 
+Generate the complete GOF2 BIN matrix and measure the shared dependency graph:
+
+```powershell
+dotnet run --project src/Gof2Workshop.Testbed -- bin-matrix data android_data ios_data macos_data `
+  --json work/bin-support-matrix.json --markdown docs/compatibility/bin-support-matrix.md
+dotnet run --project src/Gof2Workshop.Testbed -- dependency-report data `
+  --profile gof2-pc-1x --json work/dependency-pc.json
+```
+
 Add `--research` to `aei-info` or `aem-info` to include field offsets, lengths, interpreted values, and sections.
 
 ## Desktop workbench
@@ -149,16 +163,29 @@ For standalone inspection, use **File > Open Files for Quick Inspect**, drag fil
 window, or pass paths on the command line. This does not require a workspace. Selected files are
 read-only; **Create Workspace from Quick Inspect Files** makes explicit user-owned copies.
 
-**Asset > Create / Compose AEM** accepts multiple triangle glTF 2.0, GLB, OBJ/MTL, and existing
-AEM sources, composes their submeshes, and atomically writes a validated PC AEM v4 copy (v5 is
-available through the platform-neutral authoring model/CLI target). Unsupported skinning, morphs,
-sparse accessors, topology, and non-representable 16-bit counts fail explicitly.
+**File > New AEM** opens a target/template dialog for validated PC v4/v5 output. The dedicated
+Authoring Studio has a multi-select hierarchy, realtime preview, pivot/bounds controls, explicit
+geometry transforms, normal generation, winding reversal, degenerate removal, duplicate welding,
+preview/export texture assignment, a transform-key timeline, AEM-to-AEM animation import,
+glTF/OBJ export, Blender launch, writer validation, mod-owned save, and staging. **Asset > Create /
+**Compose AEM** accepts multiple triangle glTF 2.0, GLB, OBJ/MTL, and existing AEM sources.
+The Studio preflights every imported primitive and deterministically splits oversized glTF/OBJ
+triangle streams into 16-bit-safe AEM submeshes without dropping triangles. Unsupported skinning,
+morphs, sparse accessors, and topology fail explicitly.
 
 `.lang` and `.bin` files appear as structured assets. Original tables are read-only; mod-owned
 copies permit size-stable safe-field edits with Ctrl+Z/Ctrl+Y. Export writes atomically only after
-reparse and outside the game root. Unknown bytes stay at their original offsets. Collision, docking,
-and platform weapon-table families currently remain loss-preserving/raw because their field meanings
-are not safe to infer.
+reparse and outside the game root. Unknown bytes stay at their original offsets. Collision
+spheres/AABBs, docking transforms, weapon-position directions, and ship/station attachment
+transforms are typed from repeated corpus layouts; unresolved auxiliary vectors, enum members,
+resource maps, and platform conventions retain raw values and warnings.
+
+The **Dependencies** activity queries one shared graph rather than rescanning files. It shows uses,
+incoming references, candidates, evidence/confidence, missing targets, material overrides, and opens
+a bounded lazy graph document with relationship/evidence/platform filters, shortest-path tracing,
+and JSON report export. The **Mission Explorer** is deliberately read-only: it filters and navigates
+wanted records and native `LevelScript`/objective/save evidence, exports research reports, and keeps
+mission creation gated.
 
 Select an AEI region and use **Import Region** for a matching PNG. Undo/redo operates on edit
 operations; **Validate** encodes using the preserved codec, reconstructs, reparses, and decodes the
@@ -206,7 +233,7 @@ The Windows-only native-picker smoke launches the real Avalonia application, acc
 | `Gof2Workshop.Formats.Aem` | AEM v1-v5 model, geometry, bounds, animation parser, structural writer, and immutable snapshot writer |
 | `Gof2Workshop.Scene` | Parser-neutral normalized scene representation and winding diagnostics |
 | `Gof2Workshop.Export` | PNG, atlas overlay, OBJ, glTF, and software model preview |
-| `Gof2Workshop.Import` | Bounded glTF/GLB/OBJ/AEM composition, operation-based submesh/transform authoring, and validated AEM v4/v5 output |
+| `Gof2Workshop.Import` | Bounded glTF/GLB/OBJ/AEM composition, 16-bit-safe primitive splitting/preflight, operation-based submesh/transform authoring, and validated AEM v4/v5 output |
 | `Gof2Workshop.GameData` | BIN-family registry, safe structural/semantic models, loss-preserving writers, operations, recovery, and validation |
 | `Gof2Workshop.Workbench` | UI-independent workspace, indexing, search, Problems/Output, document/provider, layout, and path-safety services |
 | `Gof2Workshop.App` | Avalonia 12 desktop IDE shell and interactive AEI/AEM documents |
@@ -225,12 +252,12 @@ Parser projects do not depend on Avalonia or the CLI. The desktop application di
 - OpenGL is the primary desktop model viewport. The adaptive software preview remains available for fallback, deterministic images, and headless validation.
 - Pane drag handles detach Explorer, Inspector, and bottom tools into owned windows and persist that state. Arbitrary docking zones/tab groups are not implemented.
 - AEI writing supports raw RGBA and BC1/BC2/BC3 source-preserving encoding and same-size region/full-atlas edits. PVRTC/ETC/ATC encoding, atlas resizing, and metadata layout edits are not implemented.
-- AEM writing serializes the parsed v1-v5 geometry, bounds, supported channels, and animation records. All 752 unchanged corpus models round-trip byte-for-byte. The workbench does not yet expose geometry-authoring controls; v1 topology edits must retain a representable source strip grouping.
+- AEM writing serializes parsed v1-v5 geometry, bounds, supported channels, and animation records. All 752 unchanged PC corpus models round-trip byte-for-byte. The Authoring Studio targets validated PC v4/v5 and exposes focused geometry/transform tools; it is intentionally not a vertex sculptor, and v1-v3 remain import/read-oriented targets.
 - Custom glTF/GLB/OBJ/AEM composition authors v4/v5 geometry and confirmed transform animation. Skinning, morph targets, arbitrary node hierarchy, and non-linear glTF interpolation remain explicit limitations. Blender may bake unequal curve keys during export, so its round trip is structurally validated but can be resampled/lossy.
 - The browser host uses a dedicated realtime WebGL 2 renderer with persistent GPU resources; a bounded software rasterizer remains as fallback. IndexedDB persistence is explicit and versioned, and the collection remains bounded. Firefox/Safari have not been physically tested here.
 - The macOS 3.2-core VAO/shader path is implemented and packages, but this environment has no physical Mac; hardware validation remains required and the software fallback is retained.
 - Mission authoring is disabled: corpus and runtime evidence indicates procedural side missions plus executable campaign `LevelScript` logic, with no confirmed declarative mission container.
-- All discovered GOF2 `.bin` files are classified and support exact unchanged writing. Confirmed/structurally bounded fields are editable without resizing; collision, docking, and platform weapon tables remain loss-preserving advanced/raw, and new record creation is disabled until IDs, counts, references, and engine limits are proven.
+- All discovered GOF2 `.bin` files are classified and support exact unchanged writing plus controlled edited/reparse checks. Confirmed and structurally bounded fields are editable; unknown meanings remain labelled, fixed-size, and preserved. New record creation is disabled until allocation, sorting, references, and executable limits are proven.
 
 ## Research and licensing
 
@@ -243,6 +270,8 @@ Parser projects do not depend on Avalonia or the CLI. The desktop application di
 - [Browser-local host](docs/browser.md)
 - [Cross-platform compatibility](docs/compatibility/cross-platform-comparison.md)
 - [Browser, BIN, and AEM authoring validation](docs/compatibility/browser-bin-aem-authoring-report.md)
+- [Semantic BIN, dependency graph, Mission Explorer, and AEM Studio validation](docs/compatibility/semantic-data-mission-authoring-report.md)
+- [Generated BIN support matrix](docs/compatibility/bin-support-matrix.md)
 - [Cross-platform workbench validation report](docs/compatibility/cross-platform-workbench-report.md)
 - [Game-data research](docs/research/game-data/corpus-inventory.md)
 - [Mission blocker report](docs/research/missions/limitations.md)

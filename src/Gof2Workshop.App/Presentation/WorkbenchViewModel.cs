@@ -5,10 +5,22 @@ using Gof2Workshop.App.Documents;
 using Gof2Workshop.Binary;
 using Gof2Workshop.Core;
 using Gof2Workshop.Formats.Aem;
+using Gof2Workshop.GameData;
 using Gof2Workshop.Import;
 using Gof2Workshop.Workbench;
 
 namespace Gof2Workshop.App.Presentation;
+
+public sealed record DependencyEdgeRow(
+    string Direction,
+    string Relationship,
+    string Target,
+    string Evidence,
+    string Confidence,
+    string State,
+    DependencyEdge Edge);
+
+public sealed record SaveDifferenceRow(string Offset, int Length, string Before, string After);
 
 public sealed class WorkbenchViewModel : ObservableObject, IDisposable
 {
@@ -22,6 +34,11 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     private readonly ModStagingService modStagingService;
     private readonly ModBuildService modBuildService;
     private readonly AssetRelationshipService relationshipService;
+    private readonly DependencyGraph dependencyGraph;
+    private readonly DependencyGraphBuilder dependencyGraphBuilder;
+    private readonly MaterialDependencyContributor materialDependencyContributor;
+    private readonly MissionEvidenceService missionEvidenceService = new();
+    private readonly MissionEvidenceQueryService missionQueryService = new();
     private readonly TutorialSession tutorialSession = new();
     private readonly List<IndexedAsset> gameAssets = [];
     private readonly List<IndexedAsset> modAssets = [];
@@ -60,6 +77,14 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     private int documentHistoryIndex = -1;
     private bool navigatingDocumentHistory;
     private IUndoableDocument? activeUndoableDocument;
+    private DependencyNode? selectedDependencyNode;
+    private DependencyEdgeRow? selectedDependencyEdge;
+    private MissionEvidence? selectedMission;
+    private MissionResearchDocument? missionResearch;
+    private string missionSearchText = string.Empty;
+    private string missionKindFilter = "All";
+    private string missionConfidenceFilter = "All";
+    private string missionHandlerFilter = "All";
 
     public WorkbenchViewModel(UserDialogService dialogs)
     {
@@ -74,8 +99,12 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         problemService = new ProblemService();
         outputService = new OutputService();
         modStagingService = new ModStagingService(workspaceService);
-        modBuildService = new ModBuildService(workspaceService);
         relationshipService = new AssetRelationshipService();
+        dependencyGraph = new DependencyGraph();
+        dependencyGraphBuilder = new DependencyGraphBuilder(dependencyGraph);
+        materialDependencyContributor = new MaterialDependencyContributor(dependencyGraph);
+        modBuildService = new ModBuildService(workspaceService, dependencyGraph);
+        relationshipService.Changed += OnMaterialRelationshipsChanged;
 
         DocumentEditorRegistry registry = new();
         registry.Register(new LanguageEditorProvider(
@@ -109,6 +138,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         CreateWorkspaceFromInspectionCommand = new AsyncRelayCommand(
             CreateWorkspaceFromInspectionAsync,
             () => inspectionAssets.Count > 0);
+        NewAemCommand = new AsyncRelayCommand(CreateNewAemAsync);
         ImportModelCommand = new AsyncRelayCommand(ImportModelAsync);
         BlenderIntegrationCommand = new AsyncRelayCommand(CheckBlenderIntegrationAsync);
         CloseWorkspaceCommand = new AsyncRelayCommand(CloseWorkspaceAsync, () => Workspace is not null);
@@ -185,6 +215,15 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
                 ActiveBottomTab = parameter as string ?? "Output";
                 BottomVisible = true;
             });
+        RefreshDependenciesCommand = new AsyncRelayCommand(RefreshDependencyGraphAsync);
+        OpenDependencyCommand = new AsyncRelayCommand(OpenSelectedDependencyAsync, () => SelectedDependencyNode is not null);
+        OpenDependencyGraphCommand = new RelayCommand(OpenDependencyGraph, () => SelectedDependencyNode is not null);
+        ConfirmDependencyCommand = new AsyncRelayCommand(() => SetDependencyDecisionAsync(RelationshipDecision.Confirmed), () => SelectedDependencyEdge is not null && Workspace is not null);
+        RejectDependencyCommand = new AsyncRelayCommand(() => SetDependencyDecisionAsync(RelationshipDecision.Rejected), () => SelectedDependencyEdge is not null && Workspace is not null);
+        OpenMissionCommand = new RelayCommand(OpenSelectedMission, () => SelectedMission is not null);
+        OpenMissionDependenciesCommand = new RelayCommand(OpenSelectedMissionDependencies, () => SelectedMission is not null);
+        ExportMissionResearchCommand = new AsyncRelayCommand(ExportMissionResearchAsync, () => missionResearch is not null);
+        CompareMissionSavesCommand = new AsyncRelayCommand(CompareMissionSavesAsync);
         StartTutorialCommand = new RelayCommand(StartTutorial);
         TutorialNextCommand = new RelayCommand(TutorialNext, () => tutorialSession.IsActive);
         TutorialBackCommand = new RelayCommand(TutorialBack, () => tutorialSession.CanGoBack);
@@ -211,6 +250,22 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     public ObservableCollection<ModManifestAsset> Changes { get; } = [];
 
     public ObservableCollection<ModValidationIssue> ChangeIssues { get; } = [];
+
+    public ObservableCollection<SaveDifferenceRow> MissionSaveDifferences { get; } = [];
+
+    public ObservableCollection<DependencyNode> DependencyNodes { get; } = [];
+
+    public ObservableCollection<DependencyEdgeRow> DependencyEdges { get; } = [];
+
+    public ObservableCollection<MissionEvidence> Missions { get; } = [];
+
+    public ObservableCollection<NativeHandlerEvidence> MissionHandlers { get; } = [];
+
+    public IReadOnlyList<string> MissionKindFilters { get; } = ["All", .. Enum.GetNames<MissionEvidenceKind>()];
+
+    public IReadOnlyList<string> MissionConfidenceFilters { get; } = ["All", .. Enum.GetNames<MissionEvidenceConfidence>()];
+
+    public ObservableCollection<string> MissionHandlerFilters { get; } = ["All"];
 
     public IReadOnlyList<AssetPlatformProfile> Profiles => ProfileCatalog.All;
 
@@ -346,6 +401,109 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         }
     }
 
+    public DependencyNode? SelectedDependencyNode
+    {
+        get => selectedDependencyNode;
+        set
+        {
+            if (SetProperty(ref selectedDependencyNode, value))
+            {
+                RefreshDependencyEdges();
+                ((AsyncRelayCommand)OpenDependencyCommand).RaiseCanExecuteChanged();
+                ((RelayCommand)OpenDependencyGraphCommand).RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public DependencyEdgeRow? SelectedDependencyEdge
+    {
+        get => selectedDependencyEdge;
+        set
+        {
+            if (SetProperty(ref selectedDependencyEdge, value))
+            {
+                ((AsyncRelayCommand)ConfirmDependencyCommand).RaiseCanExecuteChanged();
+                ((AsyncRelayCommand)RejectDependencyCommand).RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public MissionEvidence? SelectedMission
+    {
+        get => selectedMission;
+        set
+        {
+            if (SetProperty(ref selectedMission, value))
+            {
+                ((RelayCommand)OpenMissionCommand).RaiseCanExecuteChanged();
+                ((RelayCommand)OpenMissionDependenciesCommand).RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string MissionSearchText
+    {
+        get => missionSearchText;
+        set
+        {
+            if (SetProperty(ref missionSearchText, value ?? string.Empty))
+            {
+                ApplyMissionFilters();
+            }
+        }
+    }
+
+    public string MissionKindFilter
+    {
+        get => missionKindFilter;
+        set
+        {
+            if (SetProperty(ref missionKindFilter, value ?? "All"))
+            {
+                ApplyMissionFilters();
+            }
+        }
+    }
+
+    public string MissionConfidenceFilter
+    {
+        get => missionConfidenceFilter;
+        set
+        {
+            if (SetProperty(ref missionConfidenceFilter, value ?? "All"))
+            {
+                ApplyMissionFilters();
+            }
+        }
+    }
+
+    public string MissionHandlerFilter
+    {
+        get => missionHandlerFilter;
+        set
+        {
+            if (SetProperty(ref missionHandlerFilter, value ?? "All"))
+            {
+                ApplyMissionFilters();
+            }
+        }
+    }
+
+    public string MissionSummary => missionResearch is null
+        ? "Mission evidence is built after scanning game data."
+        : $"{Missions.Count:N0}/{missionResearch.Missions.Count:N0} evidence groups · {missionResearch.Handlers.Count:N0} native handlers · " +
+          $"creation {(missionResearch.MissionCreationEnabled ? "enabled" : "safely gated")}";
+
+    public string DependencySummary
+    {
+        get
+        {
+            DependencyGraphSnapshot snapshot = dependencyGraph.Snapshot();
+            int broken = snapshot.Edges.Count(edge => edge.ValidationState == DependencyValidationState.Broken);
+            return $"{snapshot.Nodes.Count:N0} nodes · {snapshot.Edges.Count:N0} relationships · {broken:N0} broken";
+        }
+    }
+
     public string SearchText
     {
         get => searchText;
@@ -404,6 +562,8 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(IsExplorerActivity));
                 OnPropertyChanged(nameof(IsSearchActivity));
                 OnPropertyChanged(nameof(IsChangesActivity));
+                OnPropertyChanged(nameof(IsDependenciesActivity));
+                OnPropertyChanged(nameof(IsMissionsActivity));
                 OnPropertyChanged(nameof(IsPlaceholderActivity));
                 if (value == "Changes")
                 {
@@ -419,8 +579,12 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
 
     public bool IsChangesActivity => ActiveActivity == "Changes";
 
+    public bool IsDependenciesActivity => ActiveActivity == "Dependencies";
+
+    public bool IsMissionsActivity => ActiveActivity == "Missions";
+
     public bool IsPlaceholderActivity =>
-        !IsExplorerActivity && !IsSearchActivity && !IsChangesActivity;
+        !IsExplorerActivity && !IsSearchActivity && !IsChangesActivity && !IsDependenciesActivity && !IsMissionsActivity;
 
     public string ActiveBottomTab
     {
@@ -552,6 +716,8 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
 
     public System.Windows.Input.ICommand ImportModelCommand { get; }
 
+    public System.Windows.Input.ICommand NewAemCommand { get; }
+
     public System.Windows.Input.ICommand BlenderIntegrationCommand { get; }
 
     public System.Windows.Input.ICommand CloseWorkspaceCommand { get; }
@@ -561,6 +727,24 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     public System.Windows.Input.ICommand RescanCommand { get; }
 
     public System.Windows.Input.ICommand CancelScanCommand { get; }
+
+    public System.Windows.Input.ICommand RefreshDependenciesCommand { get; }
+
+    public System.Windows.Input.ICommand OpenDependencyCommand { get; }
+
+    public System.Windows.Input.ICommand OpenDependencyGraphCommand { get; }
+
+    public System.Windows.Input.ICommand ConfirmDependencyCommand { get; }
+
+    public System.Windows.Input.ICommand RejectDependencyCommand { get; }
+
+    public System.Windows.Input.ICommand OpenMissionCommand { get; }
+
+    public System.Windows.Input.ICommand OpenMissionDependenciesCommand { get; }
+
+    public System.Windows.Input.ICommand ExportMissionResearchCommand { get; }
+
+    public System.Windows.Input.ICommand CompareMissionSavesCommand { get; }
 
     public System.Windows.Input.ICommand OpenAssetCommand { get; }
 
@@ -639,6 +823,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         string? assetRootArgument = GetOption(arguments, "--asset-root");
         string? profileArgument = GetOption(arguments, "--profile");
         string? tutorialArgument = GetOption(arguments, "--tutorial");
+        string? newAemTemplateArgument = GetOption(arguments, "--new-aem-template");
         List<string> openArguments = GetOpenPaths(arguments);
         if (profileArgument is not null)
         {
@@ -685,6 +870,15 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         if (!string.IsNullOrWhiteSpace(tutorialArgument))
         {
             StartTutorial(tutorialArgument);
+        }
+
+        if (!string.IsNullOrWhiteSpace(newAemTemplateArgument))
+        {
+            if (!Enum.TryParse(newAemTemplateArgument, ignoreCase: true, out AemAuthoringTemplate template))
+            {
+                throw new ArgumentException($"Unknown AEM authoring template '{newAemTemplateArgument}'.");
+            }
+            OpenSyntheticAemTemplate(template);
         }
     }
 
@@ -1068,6 +1262,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
             RebuildTree(GameAssetTree, gameAssets);
             RebuildFormats();
             RefreshSearch();
+            await RefreshDependencyGraphAsync();
             ScanAssetsFound = gameAssets.Count;
             ScanStatus = $"{gameAssets.Count:N0} assets indexed in {result.Duration.TotalSeconds:N2} s";
             StatusMessage =
@@ -1125,6 +1320,407 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         modAssets.AddRange(result.Assets);
         relationshipService.UpdateAssets(gameAssets.Concat(modAssets).Concat(inspectionAssets));
         RebuildTree(ModAssetTree, modAssets);
+        await RefreshDependencyGraphAsync();
+    }
+
+    private async Task RefreshDependencyGraphAsync()
+    {
+        IndexedAsset[] assets = gameAssets.Concat(modAssets).Concat(inspectionAssets).ToArray();
+        if (assets.Length == 0)
+        {
+            dependencyGraph.ReplaceScope("corpus:" + SelectedProfile.Id, [], []);
+            RefreshDependencyCollections();
+            return;
+        }
+
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        try
+        {
+            DependencyGraphSnapshot snapshot = await dependencyGraphBuilder.BuildAsync(
+                SelectedProfile.Id,
+                assets,
+                scanCancellation?.Token ?? CancellationToken.None);
+            if (Workspace is not null)
+            {
+                materialDependencyContributor.Update(SelectedProfile.Id, Workspace, assets);
+            }
+            await RefreshMissionResearchAsync(assets, scanCancellation?.Token ?? CancellationToken.None);
+            snapshot = dependencyGraph.Snapshot();
+            RefreshDependencyCollections(snapshot);
+            outputService.Write(
+                OutputLevel.Information,
+                "Dependencies",
+                $"Built {snapshot.Nodes.Count:N0} nodes and {snapshot.Edges.Count:N0} relationships in " +
+                $"{stopwatch.Elapsed.TotalMilliseconds:N0} ms.");
+        }
+        catch (OperationCanceledException)
+        {
+            outputService.Write(OutputLevel.Warning, "Dependencies", "Dependency analysis cancelled.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or FormatParseException)
+        {
+            outputService.Write(OutputLevel.Error, "Dependencies", exception.Message);
+        }
+    }
+
+    private void RefreshDependencyCollections(DependencyGraphSnapshot? supplied = null)
+    {
+        DependencyGraphSnapshot snapshot = supplied ?? dependencyGraph.Snapshot();
+        string? selectedId = SelectedDependencyNode?.Id.Value;
+        DependencyNodes.Clear();
+        foreach (DependencyNode node in snapshot.Nodes
+            .Where(node => node.Kind != DependencyNodeKind.UnknownExternalReference)
+            .OrderBy(node => node.Kind)
+            .ThenBy(node => node.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .Take(20_000))
+        {
+            DependencyNodes.Add(node);
+        }
+
+        SelectedDependencyNode = selectedId is null
+            ? DependencyNodes.FirstOrDefault()
+            : DependencyNodes.FirstOrDefault(node => node.Id.Value.Equals(selectedId, StringComparison.Ordinal));
+        OnPropertyChanged(nameof(DependencySummary));
+    }
+
+    private void OnMaterialRelationshipsChanged(object? sender, EventArgs args)
+    {
+        _ = sender;
+        _ = args;
+        if (Workspace is null)
+        {
+            return;
+        }
+
+        materialDependencyContributor.Update(
+            SelectedProfile.Id,
+            Workspace,
+            gameAssets.Concat(modAssets).Concat(inspectionAssets));
+        RefreshDependencyCollections();
+    }
+
+    private void RefreshDependencyEdges()
+    {
+        DependencyEdges.Clear();
+        SelectedDependencyEdge = null;
+        if (SelectedDependencyNode is null)
+        {
+            return;
+        }
+
+        foreach (DependencyEdge edge in dependencyGraph.GetUses(SelectedDependencyNode.Id))
+        {
+            dependencyGraph.TryGetNode(edge.Target, out DependencyNode? target);
+            DependencyEdges.Add(new DependencyEdgeRow(
+                "Uses",
+                edge.Kind.ToString(),
+                target?.DisplayName ?? edge.Target.Value,
+                edge.Evidence,
+                DependencyConfidence(edge),
+                edge.ValidationState.ToString(),
+                edge));
+        }
+
+        foreach (DependencyEdge edge in dependencyGraph.GetReferencedBy(SelectedDependencyNode.Id))
+        {
+            dependencyGraph.TryGetNode(edge.Source, out DependencyNode? source);
+            DependencyEdges.Add(new DependencyEdgeRow(
+                "Referenced by",
+                edge.Kind.ToString(),
+                source?.DisplayName ?? edge.Source.Value,
+                edge.Evidence,
+                DependencyConfidence(edge),
+                edge.ValidationState.ToString(),
+                edge));
+        }
+    }
+
+    private string DependencyConfidence(DependencyEdge edge)
+    {
+        if (Workspace is null)
+        {
+            return edge.EvidenceLevel.ToString();
+        }
+
+        RelationshipDecision decision = new RelationshipEvidenceService().GetDecision(Workspace, edge);
+        return decision == RelationshipDecision.None
+            ? edge.EvidenceLevel.ToString()
+            : $"{edge.EvidenceLevel} · user {decision.ToString().ToLowerInvariant()}";
+    }
+
+    private async Task OpenSelectedDependencyAsync()
+    {
+        DependencyNode? node = SelectedDependencyNode;
+        if (SelectedDependencyEdge is { } row)
+        {
+            DependencyNodeId related = row.Direction == "Uses" ? row.Edge.Target : row.Edge.Source;
+            dependencyGraph.TryGetNode(related, out node);
+        }
+
+        if (node is null)
+        {
+            return;
+        }
+
+        await OpenDependencyNodeAsync(node);
+    }
+
+    private async Task OpenDependencyNodeAsync(DependencyNode node)
+    {
+        if (string.IsNullOrWhiteSpace(node.SourcePath))
+        {
+            return;
+        }
+
+        IndexedAsset? asset = gameAssets.Concat(modAssets).Concat(inspectionAssets).FirstOrDefault(candidate =>
+            candidate.RelativePath.Replace('\\', '/').Equals(
+                node.SourcePath.Replace('\\', '/'),
+                StringComparison.OrdinalIgnoreCase));
+        if (asset is not null)
+        {
+            await OpenAssetAsync(asset);
+        }
+    }
+
+    private void OpenDependencyGraph()
+    {
+        if (SelectedDependencyNode is null)
+        {
+            return;
+        }
+
+        _ = documentManager.Add(new DependencyGraphDocumentViewModel(
+            dependencyGraph,
+            SelectedDependencyNode,
+            OpenDependencyNodeAsync,
+            ExportDependencyReportAsync));
+    }
+
+    private async Task ExportDependencyReportAsync(string json)
+    {
+        try
+        {
+            string? start = Workspace is null
+                ? null
+                : workspaceService.ResolveModPath(Workspace, Workspace.OutputRoot);
+            string? destination = await dialogs.SaveFileAsync(
+                "Export dependency report",
+                "dependency-report.json",
+                ".json",
+                start);
+            if (string.IsNullOrWhiteSpace(destination))
+            {
+                return;
+            }
+            destination = PathPolicy.ValidateExportDestination(destination, Workspace?.GameAssetRoot);
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            string temporary = destination + ".tmp-" + Guid.NewGuid().ToString("N");
+            await File.WriteAllTextAsync(temporary, json);
+            File.Move(temporary, destination, overwrite: true);
+            outputService.Write(OutputLevel.Information, "Dependencies",
+                $"Dependency report written to {Path.GetFileName(destination)}.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            outputService.Write(OutputLevel.Error, "Dependencies", exception.Message);
+            problemService.Add(new ProblemEntry(
+                ProblemSeverity.Error,
+                "Dependency report",
+                null,
+                "Dependencies",
+                exception.Message,
+                null,
+                "Export",
+                "Choose a writable destination outside the immutable game root."));
+        }
+    }
+
+    private async Task SetDependencyDecisionAsync(RelationshipDecision decision)
+    {
+        if (Workspace is null || SelectedDependencyEdge is null)
+        {
+            return;
+        }
+
+        RelationshipEvidenceService evidence = new();
+        if (decision == RelationshipDecision.Confirmed)
+        {
+            evidence.Confirm(Workspace, SelectedDependencyEdge.Edge);
+        }
+        else
+        {
+            evidence.Reject(Workspace, SelectedDependencyEdge.Edge);
+        }
+        if (Workspace.FilePath is not null)
+        {
+            await workspaceService.SaveAsync(Workspace);
+        }
+        RefreshDependencyEdges();
+    }
+
+    private async Task RefreshMissionResearchAsync(
+        IReadOnlyList<IndexedAsset> assets,
+        CancellationToken cancellationToken)
+    {
+        List<GameDataDocument> documents = [];
+        GameDataFormatRegistry registry = new();
+        foreach (IndexedAsset asset in assets.Where(asset => asset.Kind == AssetKind.GameData))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            byte[] bytes = await File.ReadAllBytesAsync(asset.FullPath, cancellationToken);
+            documents.Add(registry.Parse(asset.FileName, bytes));
+        }
+
+        missionResearch = missionEvidenceService.Build(SelectedProfile.Id, documents);
+        new MissionDependencyContributor(dependencyGraph).Update(missionResearch);
+        MissionHandlers.Clear();
+        foreach (NativeHandlerEvidence handler in missionResearch.Handlers)
+        {
+            MissionHandlers.Add(handler);
+        }
+        MissionHandlerFilters.Clear();
+        MissionHandlerFilters.Add("All");
+        foreach (NativeHandlerEvidence handler in missionResearch.Handlers.OrderBy(value => value.DisplayName, StringComparer.Ordinal))
+        {
+            MissionHandlerFilters.Add(handler.Id);
+        }
+        if (!MissionHandlerFilters.Contains(MissionHandlerFilter, StringComparer.Ordinal))
+        {
+            missionHandlerFilter = "All";
+            OnPropertyChanged(nameof(MissionHandlerFilter));
+        }
+        ApplyMissionFilters();
+        ((AsyncRelayCommand)ExportMissionResearchCommand).RaiseCanExecuteChanged();
+    }
+
+    private void ApplyMissionFilters()
+    {
+        string? selectedId = SelectedMission?.Id;
+        Missions.Clear();
+        if (missionResearch is not null)
+        {
+            MissionEvidenceFilter filter = new(
+                MissionSearchText,
+                Enum.TryParse(MissionKindFilter, out MissionEvidenceKind kind) ? kind : null,
+                Enum.TryParse(MissionConfidenceFilter, out MissionEvidenceConfidence confidence) ? confidence : null,
+                MissionHandlerFilter == "All" ? null : MissionHandlerFilter);
+            foreach (MissionEvidence mission in missionQueryService.Filter(missionResearch, filter))
+            {
+                Missions.Add(mission);
+            }
+        }
+        SelectedMission = selectedId is null
+            ? Missions.FirstOrDefault()
+            : Missions.FirstOrDefault(mission => mission.Id == selectedId) ?? Missions.FirstOrDefault();
+        OnPropertyChanged(nameof(MissionSummary));
+    }
+
+    private void OpenSelectedMissionDependencies()
+    {
+        if (SelectedMission is null || missionResearch is null)
+        {
+            return;
+        }
+        DependencyNodeId id = new($"{missionResearch.ProfileId}|mission|{SelectedMission.Id}");
+        if (!dependencyGraph.TryGetNode(id, out DependencyNode? node) || node is null)
+        {
+            return;
+        }
+        SelectedDependencyNode = node;
+        _ = documentManager.Add(new DependencyGraphDocumentViewModel(
+            dependencyGraph,
+            node,
+            OpenDependencyNodeAsync,
+            ExportDependencyReportAsync));
+    }
+
+    private async Task ExportMissionResearchAsync()
+    {
+        if (missionResearch is null)
+        {
+            return;
+        }
+        try
+        {
+            string? start = Workspace is null
+                ? null
+                : workspaceService.ResolveModPath(Workspace, Workspace.OutputRoot);
+            string? destination = await dialogs.SaveFileAsync(
+                "Export mission research evidence",
+                $"mission-evidence-{missionResearch.ProfileId}.json",
+                ".json",
+                start);
+            if (string.IsNullOrWhiteSpace(destination))
+            {
+                return;
+            }
+            destination = PathPolicy.ValidateExportDestination(destination, Workspace?.GameAssetRoot);
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            string temporary = destination + ".tmp-" + Guid.NewGuid().ToString("N");
+            await File.WriteAllTextAsync(temporary, missionResearch.ExportJson());
+            File.Move(temporary, destination, overwrite: true);
+            outputService.Write(OutputLevel.Information, "Mission research",
+                $"Mission evidence report written to {Path.GetFileName(destination)}.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            outputService.Write(OutputLevel.Error, "Mission research", exception.Message);
+            problemService.Add(new ProblemEntry(
+                ProblemSeverity.Error,
+                "Mission evidence",
+                null,
+                "Mission research",
+                exception.Message,
+                null,
+                "Export",
+                "Choose a writable destination outside the immutable game root."));
+        }
+    }
+
+    private async Task CompareMissionSavesAsync()
+    {
+        IReadOnlyList<string> paths = await dialogs.PickAssetFilesAsync("Select two private save snapshots to compare");
+        if (paths.Count != 2)
+        {
+            outputService.Write(OutputLevel.Warning, "Mission research", "Select exactly two equal-length save snapshots.");
+            return;
+        }
+
+        try
+        {
+            byte[] before = await File.ReadAllBytesAsync(paths[0]);
+            byte[] after = await File.ReadAllBytesAsync(paths[1]);
+            IReadOnlyList<SaveDifferenceRange> ranges = SaveStateDiffer.Compare(before, after);
+            MissionSaveDifferences.Clear();
+            foreach (SaveDifferenceRange range in ranges.Take(10_000))
+            {
+                MissionSaveDifferences.Add(new SaveDifferenceRow(
+                    $"0x{range.Offset:X8}", range.Length,
+                    Convert.ToHexString(range.Before.AsSpan(0, Math.Min(16, range.Before.Length))),
+                    Convert.ToHexString(range.After.AsSpan(0, Math.Min(16, range.After.Length)))));
+            }
+            outputService.Write(OutputLevel.Information, "Mission research",
+                $"Private save differential found {ranges.Count:N0} changed byte range(s); no semantics were inferred or persisted.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            problemService.Add(new ProblemEntry(ProblemSeverity.Warning, "Private save comparison", null,
+                "Mission research", exception.Message, null, null,
+                "Use two snapshots from the same game/profile with identical file length."));
+        }
+    }
+
+    private void OpenSelectedMission()
+    {
+        if (SelectedMission is null || missionResearch is null)
+        {
+            return;
+        }
+
+        SelectedDocument = documentManager.Add(new MissionDocumentViewModel(
+            SelectedMission,
+            missionResearch,
+            dependencyGraph));
     }
 
     private async Task OpenAssetFromParameterAsync(object? parameter)
@@ -2037,7 +2633,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     private async Task ImportModelAsync()
     {
         IReadOnlyList<string> selected = await dialogs.PickAssetFilesAsync(
-            "Compose AEM from AEM, glTF, GLB, or OBJ models");
+            "Import AEM, glTF, GLB, or OBJ submeshes into Authoring Studio");
         string[] sources = selected.Where(path => Path.GetExtension(path).Equals(".aem", StringComparison.OrdinalIgnoreCase) ||
             Path.GetExtension(path).Equals(".gltf", StringComparison.OrdinalIgnoreCase) ||
             Path.GetExtension(path).Equals(".glb", StringComparison.OrdinalIgnoreCase) ||
@@ -2051,111 +2647,30 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
 
         try
         {
-            StatusMessage = $"Composing {sources.Length} source model(s) for AEM v4…";
-            AemAuthoringResult result = await Task.Run(() =>
+            StatusMessage = $"Importing {sources.Length} source model(s) into AEM Authoring Studio…";
+            AemAuthoringProject project = await Task.Run(() =>
             {
-                AemAuthoringProject project = new(
+                AemAuthoringProject created = new(
                     Path.GetFileNameWithoutExtension(sources[0]),
                     AemVersion.V4,
                     ProfileCatalog.Pc1X.Id);
-                foreach (string source in sources)
-                {
-                    switch (Path.GetExtension(source).ToLowerInvariant())
-                    {
-                        case ".aem":
-                            AemFile parsed = new AemParser().Parse(
-                                source,
-                                new AemParserOptions(SelectedProfile));
-                            project.AddFromAem(parsed);
-                            break;
-                        case ".gltf":
-                        case ".glb":
-                            project.AddImportedScene(new GltfModelImporter().Import(source));
-                            break;
-                        case ".obj":
-                            project.AddImportedScene(new ObjModelImporter().Import(source));
-                            break;
-                        default:
-                            throw new NotSupportedException($"Unsupported model source '{Path.GetExtension(source)}'.");
-                    }
-                }
+                AemAuthoringDocumentViewModel.AddSources(created, sources, ProfileCatalog.Pc1X);
 
-                if (project.Current.Submeshes.Count == 0)
+                if (created.Current.Submeshes.Count == 0)
                 {
                     throw new InvalidDataException("The selected files did not contain any representable submeshes.");
                 }
 
-                return project.Build();
+                return created;
             });
-            string suggestedStart = Workspace is null
-                ? Path.GetDirectoryName(sources[0]) ?? Environment.CurrentDirectory
-                : Path.Combine(
-                    workspaceService.ResolveModPath(Workspace, Workspace.ModRoot),
-                    "Assets",
-                    "Models");
-            string? destination = await dialogs.SaveFileAsync(
-                "Save validated AEM v4 copy",
-                Path.GetFileNameWithoutExtension(sources[0]) + ".aem",
-                "aem",
-                suggestedStart);
-            if (destination is null)
-            {
-                return;
-            }
-
-            if (Workspace?.GameAssetRoot is string gameRoot && PathPolicy.IsWithin(destination, gameRoot))
-            {
-                throw new InvalidOperationException(
-                    "Custom models cannot be written beneath the immutable game asset root.");
-            }
-
-            string temporary = destination + ".tmp-" + Guid.NewGuid().ToString("N");
-            try
-            {
-                await File.WriteAllBytesAsync(temporary, result.Bytes);
-                File.Move(temporary, destination, overwrite: true);
-            }
-            finally
-            {
-                if (File.Exists(temporary))
-                {
-                    File.Delete(temporary);
-                }
-            }
+            WorkspaceDefinition context = GetAuthoringWorkspace();
+            SelectedDocument = documentManager.Add(new AemAuthoringDocumentViewModel(
+                project, context, dialogs, outputService, problemService, relationshipService, workspaceService));
             outputService.Write(
                 OutputLevel.Information,
                 "Model import",
-                $"Composed {sources.Length} source model(s) into AEM v4, reparsed, and scene-validated: " +
-                $"{Path.GetFileName(destination)}; " +
-                $"{result.Reparsed.Submeshes.Count} submeshes; " +
-                $"{result.Reparsed.Submeshes.Sum(value => value.Positions.Length):N0} vertices.");
-            foreach (ModelImportDiagnostic diagnostic in result.Diagnostics)
-            {
-                outputService.Write(
-                    diagnostic.Severity == ModelImportSeverity.Error ? OutputLevel.Error :
-                        diagnostic.Severity == ModelImportSeverity.Warning ? OutputLevel.Warning : OutputLevel.Information,
-                    "Model import",
-                    $"{diagnostic.Code}: {diagnostic.Message}");
-            }
-
-            if (Workspace is not null &&
-                PathPolicy.IsWithin(destination, workspaceService.ResolveModPath(Workspace, Workspace.ModRoot)))
-            {
-                await ScanModAssetsAsync();
-                IndexedAsset? authored = modAssets.FirstOrDefault(asset => Path.GetFullPath(asset.FullPath).Equals(
-                    Path.GetFullPath(destination),
-                    StringComparison.OrdinalIgnoreCase));
-                if (authored is not null)
-                {
-                    await OpenAssetAsync(authored);
-                }
-            }
-            else
-            {
-                await OpenStandalonePathsAsync([destination]);
-            }
-
-            StatusMessage = "Custom AEM authored and validated";
+                $"Opened {project.Current.Submeshes.Count:N0} imported submeshes in the operation-based Authoring Studio.");
+            StatusMessage = "AEM Authoring Studio opened";
         }
         catch (Exception exception) when (exception is ArgumentException or IOException or InvalidDataException or NotSupportedException or InvalidOperationException)
         {
@@ -2171,6 +2686,57 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
             outputService.Write(OutputLevel.Error, "Model import", exception.Message);
             StatusMessage = "AEM composition failed validation";
         }
+    }
+
+    private async Task CreateNewAemAsync(object? parameter)
+    {
+        AemVersion initialVersion = string.Equals(parameter as string, "v5", StringComparison.OrdinalIgnoreCase)
+            ? AemVersion.V5
+            : AemVersion.V4;
+        NewAemProjectOptions? options = await dialogs.PickNewAemProjectAsync(initialVersion);
+        if (options is null)
+        {
+            return;
+        }
+
+        AemAuthoringProject project = new(options.Name, options.Version, ProfileCatalog.Pc1X.Id);
+        AemAuthoringTemplateFactory.Populate(project, options.Template);
+        AemAuthoringDocumentViewModel document = new(
+            project, GetAuthoringWorkspace(), dialogs, outputService, problemService, relationshipService, workspaceService);
+        document.OutputRelativePath = options.OutputRelativePath;
+        SelectedDocument = documentManager.Add(document);
+        StatusMessage = $"New PC AEM v{(int)options.Version} {options.Template} authoring project";
+    }
+
+    private void OpenSyntheticAemTemplate(AemAuthoringTemplate template)
+    {
+        string name = "synthetic_" + template.ToString().ToLowerInvariant();
+        AemAuthoringProject project = new(name, AemVersion.V4, ProfileCatalog.Pc1X.Id);
+        AemAuthoringTemplateFactory.Populate(project, template);
+        AemAuthoringDocumentViewModel document = new(
+            project, GetAuthoringWorkspace(), dialogs, outputService, problemService, relationshipService, workspaceService)
+        {
+            OutputRelativePath = $"assets/main/3d/meshes/{name}.aem",
+        };
+        SelectedDocument = documentManager.Add(document);
+        StatusMessage = $"Synthetic {template} AEM authoring smoke document opened";
+    }
+
+    private WorkspaceDefinition GetAuthoringWorkspace()
+    {
+        if (Workspace is not null)
+        {
+            return Workspace;
+        }
+
+        inspectionWorkspace ??= new WorkspaceDefinition
+        {
+            Name = "Temporary AEM Authoring",
+            ProfileId = ProfileCatalog.Pc1X.Id,
+            ModRoot = ".",
+            FilePath = Path.Combine(Path.GetTempPath(), "gof2-workshop-authoring", "temporary.gof2workspace"),
+        };
+        return inspectionWorkspace;
     }
 
     private async Task CheckBlenderIntegrationAsync()
@@ -2336,6 +2902,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
             "--asset-root",
             "--profile",
             "--tutorial",
+            "--new-aem-template",
         };
         for (int index = 0; index < arguments.Count; index++)
         {
@@ -2386,6 +2953,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         documentManager.Changed -= OnDocumentsChanged;
         problemService.Changed -= OnProblemsChanged;
         outputService.Changed -= OnOutputChanged;
+        relationshipService.Changed -= OnMaterialRelationshipsChanged;
         documentManager.Dispose();
         disposed = true;
         GC.SuppressFinalize(this);

@@ -1,5 +1,10 @@
 # Browser, BIN, and AEM authoring validation
 
+> Historical validation snapshot. The later semantic BIN, dependency, Mission Explorer, and full
+> AEM Authoring Studio results supersede the editor-status and test-count sections below; see
+> [semantic-data-mission-authoring-report.md](semantic-data-mission-authoring-report.md) and the
+> generated [bin-support-matrix.md](bin-support-matrix.md).
+
 Validated 2026-08-01. Proprietary corpora and generated derivatives stayed in
 ignored roots; only independently generated CC0 fixtures are included in the
 repository.

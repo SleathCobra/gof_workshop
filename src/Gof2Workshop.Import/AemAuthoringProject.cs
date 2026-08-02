@@ -87,7 +87,7 @@ public sealed class AemAuthoringProject
     {
         ArgumentNullException.ThrowIfNull(scene);
         HashSet<int>? selected = primitiveIndices?.ToHashSet();
-        Dictionary<int, string> nodeTargets = [];
+        Dictionary<int, List<string>> nodeTargets = [];
         foreach ((ImportedPrimitive primitive, int index) in scene.Primitives.Select((value, index) => (value, index)))
         {
             if (selected is null || selected.Contains(index))
@@ -96,7 +96,12 @@ public sealed class AemAuthoringProject
                 AddPrimitive(primitive, stableId: stableId);
                 if (primitive.SourceNodeIndex >= 0)
                 {
-                    nodeTargets.TryAdd(primitive.SourceNodeIndex, stableId);
+                    if (!nodeTargets.TryGetValue(primitive.SourceNodeIndex, out List<string>? targets))
+                    {
+                        targets = [];
+                        nodeTargets.Add(primitive.SourceNodeIndex, targets);
+                    }
+                    targets.Add(stableId);
                 }
             }
         }
@@ -105,9 +110,12 @@ public sealed class AemAuthoringProject
         {
             foreach (ImportedAnimationTrack track in animation.Tracks)
             {
-                if (nodeTargets.TryGetValue(track.TargetNodeIndex, out string? stableId))
+                if (nodeTargets.TryGetValue(track.TargetNodeIndex, out List<string>? targets))
                 {
-                    ImportTrack(stableId, track);
+                    foreach (string stableId in targets)
+                    {
+                        ImportTrack(stableId, track);
+                    }
                 }
             }
         }
@@ -208,6 +216,176 @@ public sealed class AemAuthoringProject
     public void RecalculateBounds(string stableId) =>
         Update(stableId, "Recalculate bounds", value => value with { Bounds = CalculateBounds(value.Geometry.Positions) });
 
+    public void CenterPivot(string stableId) =>
+        Update(stableId, "Center pivot", value => value with { Pivot = CalculateBounds(value.Geometry.Positions).Center });
+
+    public void ReverseWinding(string stableId) => Update(stableId, "Reverse winding", value =>
+    {
+        ushort[] indices = [.. value.Geometry.Indices];
+        for (int index = 0; index < indices.Length; index += 3)
+        {
+            (indices[index + 1], indices[index + 2]) = (indices[index + 2], indices[index + 1]);
+        }
+
+        return value with { Geometry = value.Geometry with { Indices = indices } };
+    });
+
+    public void NormalizeNormals(string stableId) => Update(stableId, "Normalize normals", value =>
+    {
+        Vector3[] normals = value.Geometry.Normals is { } present
+            ? present.Select(normal => normal.LengthSquared() < 1e-12f ? Vector3.UnitY : Vector3.Normalize(normal)).ToArray()
+            : GenerateNormals(value.Geometry.Positions, value.Geometry.Indices);
+        return value with { Geometry = value.Geometry with { Normals = normals } };
+    });
+
+    public void FlipTextureV(string stableId) => Update(stableId, "Flip texture V", value =>
+    {
+        if (value.Geometry.TextureCoordinates is null)
+        {
+            throw new InvalidOperationException($"Submesh '{value.Name}' has no texture coordinates to flip.");
+        }
+        return value with
+        {
+            Geometry = value.Geometry with
+            {
+                TextureCoordinates = value.Geometry.TextureCoordinates
+                    .Select(uv => new Vector2(uv.X, 1f - uv.Y))
+                    .ToArray(),
+            },
+        };
+    });
+
+    public void RemoveDegenerateTriangles(string stableId) => Update(stableId, "Remove degenerate triangles", value =>
+    {
+        List<ushort> indices = [];
+        for (int index = 0; index < value.Geometry.Indices.Length; index += 3)
+        {
+            ushort a = value.Geometry.Indices[index];
+            ushort b = value.Geometry.Indices[index + 1];
+            ushort c = value.Geometry.Indices[index + 2];
+            Vector3 cross = Vector3.Cross(
+                value.Geometry.Positions[b] - value.Geometry.Positions[a],
+                value.Geometry.Positions[c] - value.Geometry.Positions[a]);
+            if (a != b && b != c && a != c && cross.LengthSquared() > 1e-12f)
+            {
+                indices.Add(a);
+                indices.Add(b);
+                indices.Add(c);
+            }
+        }
+
+        return value with { Geometry = value.Geometry with { Indices = indices.ToArray() } };
+    });
+
+    public void WeldDuplicateVertices(string stableId) => Update(stableId, "Weld duplicate vertices", value =>
+    {
+        ImportedPrimitive source = value.Geometry;
+        Dictionary<VertexKey, ushort> remap = [];
+        ushort[] sourceToTarget = new ushort[source.Positions.Length];
+        List<Vector3> positions = [];
+        List<Vector3>? normals = source.Normals is null ? null : [];
+        List<Vector2>? uvs = source.TextureCoordinates is null ? null : [];
+        List<Vector4>? colors = source.Colors is null ? null : [];
+        for (int index = 0; index < source.Positions.Length; index++)
+        {
+            VertexKey key = new(
+                source.Positions[index],
+                source.Normals?[index] ?? default,
+                source.TextureCoordinates?[index] ?? default,
+                source.Colors?[index] ?? default,
+                source.Normals is not null,
+                source.TextureCoordinates is not null,
+                source.Colors is not null);
+            if (!remap.TryGetValue(key, out ushort mapped))
+            {
+                if (positions.Count > ushort.MaxValue)
+                {
+                    throw new InvalidDataException("Welded mesh exceeds the AEM 16-bit vertex limit.");
+                }
+                mapped = checked((ushort)positions.Count);
+                remap.Add(key, mapped);
+                positions.Add(source.Positions[index]);
+                normals?.Add(source.Normals![index]);
+                uvs?.Add(source.TextureCoordinates![index]);
+                colors?.Add(source.Colors![index]);
+            }
+            sourceToTarget[index] = mapped;
+        }
+
+        ushort[] indices = source.Indices.Select(index => sourceToTarget[index]).ToArray();
+        Vector3[] weldedPositions = positions.ToArray();
+        return value with
+        {
+            Geometry = source with
+            {
+                Positions = weldedPositions,
+                Normals = normals?.ToArray(),
+                TextureCoordinates = uvs?.ToArray(),
+                Colors = colors?.ToArray(),
+                Indices = indices,
+            },
+            Bounds = CalculateBounds(weldedPositions),
+        };
+    });
+
+    public void TransformGeometry(string stableId, Matrix4x4 transform) => Update(stableId, "Apply geometry transform", value =>
+    {
+        if (!Matrix4x4.Invert(transform, out Matrix4x4 inverse))
+        {
+            throw new ArgumentException("Geometry transform must be invertible.", nameof(transform));
+        }
+
+        Matrix4x4 normalTransform = Matrix4x4.Transpose(inverse);
+        Vector3[] positions = value.Geometry.Positions.Select(position => Vector3.Transform(position, transform)).ToArray();
+        Vector3[]? normals = value.Geometry.Normals?.Select(normal =>
+        {
+            Vector3 changed = Vector3.TransformNormal(normal, normalTransform);
+            return changed.LengthSquared() < 1e-12f ? Vector3.UnitY : Vector3.Normalize(changed);
+        }).ToArray();
+        return value with
+        {
+            Geometry = value.Geometry with { Positions = positions, Normals = normals },
+            Bounds = CalculateBounds(positions),
+        };
+    });
+
+    public void ImportAnimationFromAem(
+        AemSubmesh source,
+        string targetStableId,
+        IReadOnlyCollection<AemAnimationChannel>? channels = null,
+        bool merge = false)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        HashSet<AemAnimationChannel>? selected = channels?.ToHashSet();
+        AemAuthoringTrack[] incoming = FromAnimation(source.Animation)
+            .Where(track => selected is null || selected.Contains(track.Channel))
+            .ToArray();
+        _ = Find(targetStableId);
+        Update(targetStableId, "Import AEM animation", value =>
+        {
+            IReadOnlyList<AemAuthoringTrack> tracks = merge
+                ? value.AnimationTracks.Select(existing =>
+                    {
+                        AemAuthoringTrack? addition = incoming.FirstOrDefault(candidate => candidate.Channel == existing.Channel);
+                        return addition is null
+                            ? existing
+                            : existing with
+                            {
+                                Keys = existing.Keys.Concat(addition.Keys)
+                                    .GroupBy(key => key.Time)
+                                    .Select(group => group.Last())
+                                    .OrderBy(key => key.Time)
+                                    .ToArray(),
+                            };
+                    }).Concat(incoming.Where(candidate => value.AnimationTracks.All(existing => existing.Channel != candidate.Channel))).ToArray()
+                : value.AnimationTracks
+                    .Where(track => selected is not null && !selected.Contains(track.Channel))
+                    .Concat(incoming)
+                    .ToArray();
+            return value with { AnimationTracks = tracks };
+        });
+    }
+
     public void AssignMaterial(string stableId, string? materialAsset) =>
         Update(stableId, "Assign material", value => value with { MaterialAsset = materialAsset });
 
@@ -216,6 +394,9 @@ public sealed class AemAuthoringProject
 
     public void SetLocked(string stableId, bool locked) =>
         Update(stableId, locked ? "Lock submesh" : "Unlock submesh", value => value with { Locked = locked });
+
+    public void ClearAnimation(string stableId) =>
+        Update(stableId, "Clear transform animation", value => value with { AnimationTracks = [] });
 
     public void AddKey(string stableId, AemAnimationChannel channel, AemAuthoringKey key)
     {
@@ -240,6 +421,36 @@ public sealed class AemAuthoringProject
         }
 
         ReplaceTrack(stableId, channel, track.Keys.Where((_, index) => index != keyIndex));
+    }
+
+    public void UpdateKey(string stableId, AemAnimationChannel channel, int keyIndex, AemAuthoringKey key)
+    {
+        AemAuthoringSubmesh submesh = Find(stableId);
+        AemAuthoringTrack track = submesh.AnimationTracks.FirstOrDefault(value => value.Channel == channel)
+            ?? throw new KeyNotFoundException($"Submesh '{submesh.Name}' has no {channel} track.");
+        if ((uint)keyIndex >= (uint)track.Keys.Count)
+        {
+            throw new ArgumentOutOfRangeException(nameof(keyIndex));
+        }
+        if (track.Keys.Where((_, index) => index != keyIndex).Any(value => Math.Abs(value.Time - key.Time) < 0.000001f))
+        {
+            throw new InvalidOperationException($"{channel} already contains a key at {key.Time:F6} seconds.");
+        }
+
+        ReplaceTrack(stableId, channel, track.Keys.Select((value, index) => index == keyIndex ? key : value));
+    }
+
+    public void DuplicateKey(string stableId, AemAnimationChannel channel, int keyIndex, float timeOffset = 1f / 30f)
+    {
+        AemAuthoringSubmesh submesh = Find(stableId);
+        AemAuthoringTrack track = submesh.AnimationTracks.FirstOrDefault(value => value.Channel == channel)
+            ?? throw new KeyNotFoundException($"Submesh '{submesh.Name}' has no {channel} track.");
+        if ((uint)keyIndex >= (uint)track.Keys.Count)
+        {
+            throw new ArgumentOutOfRangeException(nameof(keyIndex));
+        }
+        AemAuthoringKey source = track.Keys[keyIndex];
+        AddKey(stableId, channel, source with { Time = source.Time + timeOffset });
     }
 
     public void ReplaceTrack(string stableId, AemAnimationChannel channel, IEnumerable<AemAuthoringKey> keys)
@@ -446,4 +657,38 @@ public sealed class AemAuthoringProject
         Vector3 center = (minimum + maximum) * 0.5f;
         return new AemBoundingSphere(center, positions.Max(position => Vector3.Distance(position, center)));
     }
+
+    private static Vector3[] GenerateNormals(Vector3[] positions, ushort[] indices)
+    {
+        Vector3[] normals = new Vector3[positions.Length];
+        for (int index = 0; index < indices.Length; index += 3)
+        {
+            ushort a = indices[index];
+            ushort b = indices[index + 1];
+            ushort c = indices[index + 2];
+            Vector3 normal = Vector3.Cross(positions[b] - positions[a], positions[c] - positions[a]);
+            if (normal.LengthSquared() > 1e-12f)
+            {
+                normals[a] += normal;
+                normals[b] += normal;
+                normals[c] += normal;
+            }
+        }
+
+        for (int index = 0; index < normals.Length; index++)
+        {
+            normals[index] = normals[index].LengthSquared() < 1e-12f ? Vector3.UnitY : Vector3.Normalize(normals[index]);
+        }
+
+        return normals;
+    }
+
+    private readonly record struct VertexKey(
+        Vector3 Position,
+        Vector3 Normal,
+        Vector2 Uv,
+        Vector4 Color,
+        bool HasNormal,
+        bool HasUv,
+        bool HasColor);
 }

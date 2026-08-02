@@ -1,7 +1,16 @@
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
+using Gof2Workshop.App.Views;
+using Gof2Workshop.Formats.Aem;
+using Gof2Workshop.Import;
 
 namespace Gof2Workshop.App.Presentation;
+
+public sealed record NewAemProjectOptions(
+    string Name,
+    string OutputRelativePath,
+    AemVersion Version,
+    AemAuthoringTemplate Template);
 
 public interface IUserDialogService
 {
@@ -18,6 +27,8 @@ public interface IUserDialogService
     public Task<string?> PickAssetFileAsync(string title, string extension);
 
     public Task<IReadOnlyList<string>> PickAssetFilesAsync(string title);
+
+    public Task<NewAemProjectOptions?> PickNewAemProjectAsync(AemVersion initialVersion);
 
     public void RevealInExplorer(string path);
 }
@@ -133,6 +144,12 @@ public sealed class UserDialogService : IUserDialogService
             .Select(file => file.Path.LocalPath)
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .ToArray();
+    }
+
+    public Task<NewAemProjectOptions?> PickNewAemProjectAsync(AemVersion initialVersion)
+    {
+        Window owner = Owner ?? throw new InvalidOperationException("Dialog owner is not attached.");
+        return new NewAemProjectDialog(initialVersion).ShowDialog<NewAemProjectOptions?>(owner);
     }
 
     public void RevealInExplorer(string path)

@@ -20,7 +20,7 @@ Open `http://127.0.0.1:5237/`. `file://` is not supported because the browser
 must load JavaScript modules and WebAssembly resources from an HTTP origin. Any
 static host with correct `.wasm` and JavaScript MIME types is sufficient.
 
-The clean final publish contained 206 files / 32,618,127 bytes (31.11 MiB)
+The resumed clean publish contained 206 files / 32,629,080 bytes (31.12 MiB)
 uncompressed. It includes no game asset.
 
 ## File, storage, and privacy model
@@ -97,6 +97,8 @@ Additional public-data scenarios are `?smoke=bin`, `?smoke=storage`,
 `?smoke=aei-edit`, and `?smoke=aem-author`. The harness attaches through the
 Chromium DevTools protocol, checks the application-owned smoke state, exercises
 camera input and context loss for 3D cases, and captures a real screenshot.
+Connect, send, and receive operations have hard deadlines; a failed bootstrap aborts the socket and
+returns a controlled diagnostic instead of hanging during WebSocket disposal.
 
 Firefox was not installed in this environment. Safari cannot be physically
 validated without macOS. Both remain explicit runtime-validation gaps. A service

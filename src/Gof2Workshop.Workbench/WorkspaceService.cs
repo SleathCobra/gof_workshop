@@ -132,6 +132,7 @@ public sealed class WorkspaceService : IWorkspaceService
         workspace.RecentAssets ??= [];
         workspace.MaterialOverrides ??= new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
+        workspace.RelationshipDecisions ??= new Dictionary<string, string>(StringComparer.Ordinal);
         workspace.Layout ??= new WorkbenchLayoutState();
         workspace.AssetFilter ??= new AssetFilterState();
         workspace.Layout.Normalize();
